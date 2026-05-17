@@ -54,7 +54,9 @@ def render():
             return
 
         with st.status("Running 6-node pipeline...", expanded=True) as status:
-            st.write("Node 1: Interpreting business rule...")
+            st.write("6개 노드를 순차 실행합니다 (약 1~2분 소요)")
+            st.write(
+                "Rule Interpreter - Code Generator - Test Generator - Test Runner - Compliance Checker - Doc Generator")
             try:
                 final_state = run_pipeline(
                     raw_rule=rule_text,
