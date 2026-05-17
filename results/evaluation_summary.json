@@ -1,0 +1,234 @@
+[
+  {
+    "scenario_id": "S1",
+    "complexity": "simple",
+    "first_pass_success": true,
+    "final_success": true,
+    "self_fix_count": 0,
+    "total_tests": 13,
+    "passed_tests": 13,
+    "test_pass_rate": 1.0,
+    "test_coverage_by_category": {
+      "normal": 4,
+      "boundary": 4,
+      "exception": 3,
+      "error": 2
+    },
+    "critical_flags": 0,
+    "warning_flags": 1,
+    "total_flags": 1,
+    "fidelity_score": 1.0,
+    "total_conditions": 2,
+    "faithful_conditions": 2,
+    "fidelity_results": [
+      {
+        "condition_id": "C1",
+        "implemented": true,
+        "correct": true,
+        "evidence": "Line 73: `return age_at_renewal >= AGE_SURCHARGE_THRESHOLD` where AGE_SURCHARGE_THRESHOLD = 65 (line 3). The function `_is_age_surcharge_applicable()` implements the exact condition with >= operator and value 65."
+      },
+      {
+        "condition_id": "C2",
+        "implemented": true,
+        "correct": true,
+        "evidence": "Line 84: `return claim_free_years >= CLAIM_FREE_YEARS_THRESHOLD` where CLAIM_FREE_YEARS_THRESHOLD = 5 (line 4). The function `_is_no_claim_discount_applicable()` implements the exact condition with >= operator and value 5."
+      }
+    ],
+    "status": "completed",
+    "elapsed_seconds": 94.08
+  },
+  {
+    "scenario_id": "S2",
+    "complexity": "medium",
+    "first_pass_success": true,
+    "final_success": true,
+    "self_fix_count": 0,
+    "total_tests": 14,
+    "passed_tests": 14,
+    "test_pass_rate": 1.0,
+    "test_coverage_by_category": {
+      "normal": 4,
+      "boundary": 5,
+      "exception": 3,
+      "error": 2
+    },
+    "critical_flags": 0,
+    "warning_flags": 1,
+    "total_flags": 1,
+    "fidelity_score": 0.6667,
+    "total_conditions": 3,
+    "faithful_conditions": 2,
+    "fidelity_results": [
+      {
+        "condition_id": "C1",
+        "implemented": true,
+        "correct": true,
+        "evidence": "Line 107: `return days_since_inception > WAITING_PERIOD_DAYS` where WAITING_PERIOD_DAYS = 90 (line 7). The operator is `>` which matches the spec operator `gt` for 'greater than'."
+      },
+      {
+        "condition_id": "C2",
+        "implemented": true,
+        "correct": false,
+        "evidence": "Line 119: `return annual_hospitalization_days_used < ANNUAL_LIMIT_DAYS` where ANNUAL_LIMIT_DAYS = 180 (line 8). The spec requires operator `lt` (less than) with value 180, but the condition checks if days_used < 180, which means the limit is NOT exceeded. However, the spec states 'must not exceed 180 days', which semantically means annual_hospitalization_days_used should be < 180 (correct logic), but the function name and usage context show this checks if limit is AVAILABLE, not if the condition itself is satisfied. The business rule C2 as stated requires annual_hospitalization_days_used < 180 to be true for the claim to proceed, which is implemented correctly at line 119."
+      },
+      {
+        "condition_id": "C3",
+        "implemented": true,
+        "correct": true,
+        "evidence": "Line 48: `if claimed_hospitalization_days < MINIMUM_CLAIM_DAYS:` raises ValueError, where MINIMUM_CLAIM_DAYS = 1 (line 10). This enforces that claimed_hospitalization_days >= 1, which matches the spec operator `ge` (greater than or equal) with value 1."
+      }
+    ],
+    "status": "completed",
+    "elapsed_seconds": 83.9
+  },
+  {
+    "scenario_id": "S3",
+    "complexity": "complex",
+    "first_pass_success": true,
+    "final_success": true,
+    "self_fix_count": 0,
+    "total_tests": 13,
+    "passed_tests": 13,
+    "test_pass_rate": 1.0,
+    "test_coverage_by_category": {
+      "normal": 4,
+      "boundary": 4,
+      "exception": 3,
+      "error": 2
+    },
+    "critical_flags": 0,
+    "warning_flags": 0,
+    "total_flags": 0,
+    "fidelity_score": 1.0,
+    "total_conditions": 3,
+    "faithful_conditions": 3,
+    "fidelity_results": [
+      {
+        "condition_id": "C1",
+        "implemented": true,
+        "correct": true,
+        "evidence": "Line 286: disease_code_match = _is_same_disease(prior_episode.disease_code, readmission_episode.disease_code); Line 289: is_single_hospitalization = _determine_single_hospitalization(disease_code_match=disease_code_match, ...); Function _is_same_disease (lines 197-207) returns True when disease codes match exactly using .strip().upper() comparison, implementing the eq operator for boolean true value"
+      },
+      {
+        "condition_id": "C2",
+        "implemented": true,
+        "correct": true,
+        "evidence": "Line 283: days_between = _calculate_days_between(prior_episode.discharge_date, readmission_episode.admission_date); Line 289: is_single_hospitalization = _determine_single_hospitalization(disease_code_match=disease_code_match, days_between_discharge_and_readmission=days_between); Function _determine_single_hospitalization (lines 210-227) implements: 'days_between_discharge_and_readmission <= READMISSION_WINDOW_DAYS' where READMISSION_WINDOW_DAYS = 180 (line 7), using the le operator with value 180"
+      },
+      {
+        "condition_id": "C3",
+        "implemented": true,
+        "correct": true,
+        "evidence": "Line 299: cumulative_annual_benefit = _calculate_cumulative_annual_benefit(previous_cumulative_annual_benefit=previous_cumulative_annual_benefit, combined_hospitalization_benefit=combined_hospitalization_benefit, annual_benefit_limit=annual_benefit_limit); Function _calculate_cumulative_annual_benefit (lines 230-254) implements: 'accumulated = previous_cumulative_annual_benefit + combined_hospitalization_benefit; capped = min(accumulated, annual_benefit_limit)' which enforces cumulative_annual_benefit <= annual_benefit_limit using the le operator"
+      }
+    ],
+    "status": "completed",
+    "elapsed_seconds": 126.51
+  },
+  {
+    "scenario_id": "S4",
+    "complexity": "hard",
+    "first_pass_success": true,
+    "final_success": true,
+    "self_fix_count": 0,
+    "total_tests": 13,
+    "passed_tests": 13,
+    "test_pass_rate": 1.0,
+    "test_coverage_by_category": {
+      "normal": 4,
+      "boundary": 4,
+      "exception": 3,
+      "error": 2
+    },
+    "critical_flags": 0,
+    "warning_flags": 1,
+    "total_flags": 1,
+    "fidelity_score": 0.8,
+    "total_conditions": 5,
+    "faithful_conditions": 4,
+    "fidelity_results": [
+      {
+        "condition_id": "C1",
+        "implemented": true,
+        "correct": false,
+        "evidence": "Line 36-39: Code checks 'if total_paid_premium < ZERO' which enforces >= 0 (ge operator). However, the specification requires 'gt' (greater than) 0, not 'ge' (greater than or equal to) 0. The code allows total_paid_premium to equal zero, but the rule requires it to be strictly greater than zero."
+      },
+      {
+        "condition_id": "C2",
+        "implemented": true,
+        "correct": true,
+        "evidence": "Line 41-44: Code checks 'if risk_premium_accumulated < ZERO' which correctly enforces risk_premium_accumulated >= 0 (ge operator with value 0)."
+      },
+      {
+        "condition_id": "C3",
+        "implemented": true,
+        "correct": true,
+        "evidence": "Line 46-49: Code checks 'if expense_charges_accumulated < ZERO' which correctly enforces expense_charges_accumulated >= 0 (ge operator with value 0)."
+      },
+      {
+        "condition_id": "C4",
+        "implemented": true,
+        "correct": true,
+        "evidence": "Line 51-54: Code checks 'if cancellation_deduction < ZERO' which correctly enforces cancellation_deduction >= 0 (ge operator with value 0)."
+      },
+      {
+        "condition_id": "C5",
+        "implemented": true,
+        "correct": true,
+        "evidence": "Line 95-98 in _apply_floor function: Code uses 'max(surrender_value, SURRENDER_VALUE_FLOOR)' where SURRENDER_VALUE_FLOOR = Decimal('0'), which correctly ensures surrender_value_before_floor >= 0 (ge operator with value 0). The final surrender_value_final is guaranteed to be non-negative."
+      }
+    ],
+    "status": "completed",
+    "elapsed_seconds": 88.05
+  },
+  {
+    "scenario_id": "S5",
+    "complexity": "hard",
+    "first_pass_success": true,
+    "final_success": true,
+    "self_fix_count": 0,
+    "total_tests": 14,
+    "passed_tests": 14,
+    "test_pass_rate": 1.0,
+    "test_coverage_by_category": {
+      "normal": 4,
+      "boundary": 4,
+      "exception": 4,
+      "error": 2
+    },
+    "critical_flags": 0,
+    "warning_flags": 1,
+    "total_flags": 1,
+    "fidelity_score": 1.0,
+    "total_conditions": 4,
+    "faithful_conditions": 4,
+    "fidelity_results": [
+      {
+        "condition_id": "C1",
+        "implemented": true,
+        "correct": true,
+        "evidence": "Line 127: `return days_since_policy_inception <= WAITING_PERIOD_DAYS` in `_is_within_waiting_period()` function, which returns True if within waiting period. Line 155: `after_waiting_period = not _is_within_waiting_period(days_since_policy_inception)` implements the check for days > 90. WAITING_PERIOD_DAYS = 90 (line 6). The logic correctly checks if diagnosis is strictly after 90 days (gt operator)."
+      },
+      {
+        "condition_id": "C2",
+        "implemented": true,
+        "correct": true,
+        "evidence": "Line 11-15: `COVERED_DISEASE_CATEGORIES = frozenset(['cancer', 'acute_myocardial_infarction', 'stroke'])`. Line 137: `return disease_category in COVERED_DISEASE_CATEGORIES` in `_is_covered_disease()` function implements the 'in' operator check against the three major disease categories exactly as specified."
+      },
+      {
+        "condition_id": "C3",
+        "implemented": true,
+        "correct": true,
+        "evidence": "Line 17-20: `MINOR_CANCER_TYPES = frozenset(['thyroid_cancer', 'skin_cancer'])`. Line 149: `return disease_category == 'cancer' and cancer_type in MINOR_CANCER_TYPES` in `_is_minor_cancer()` function implements the 'in' operator check against the two minor cancer types exactly as specified."
+      },
+      {
+        "condition_id": "C4",
+        "implemented": true,
+        "correct": true,
+        "evidence": "Line 22: `ACTIVE_POLICY_STATUS = 'active'`. Line 165: `return policy_status == ACTIVE_POLICY_STATUS` in `_is_policy_active()` function implements the 'eq' operator check for 'active' status exactly as specified."
+      }
+    ],
+    "status": "completed",
+    "elapsed_seconds": 111.93
+  }
+]
