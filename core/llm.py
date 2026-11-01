@@ -14,7 +14,6 @@ def get_llm(node_name: str, temperature: float = 0.0) -> ChatAnthropic:
     return ChatAnthropic(
         model=model,
         api_key=ANTHROPIC_API_KEY,
-        temperature=temperature,
         max_tokens=16384,
     )
 
