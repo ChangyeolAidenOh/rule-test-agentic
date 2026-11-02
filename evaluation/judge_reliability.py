@@ -52,6 +52,18 @@ SOURCES = {"rule", "derived"}
 PROBLEM = {"incorrect", "missing"}
 JUDGES = ["v1_haiku", "ast", "llm_haiku", "llm_sonnet", "hybrid"]
 
+# Note tags written by the annotator (see LABELING_PROTOCOL.md)
+KNOWN_TAGS = {"seen", "ambiguous", "mixed", "direction"}
+# Pre-specified analysis subsets (docs/judge_reliability_analysis_plan.md).
+# Each entry: (name, row filter on the annotator's tags). Do not add subsets after
+# seeing results — extra cuts invite selective reporting.
+SUBSETS = [
+    ("primary", lambda tags: True),                      # all rows, pre-registered rule
+    ("excl_ambiguous", lambda tags: "ambiguous" not in tags),  # sensitivity
+    ("seen", lambda tags: "seen" in tags),               # exposure split
+    ("unseen", lambda tags: "seen" not in tags),         # exposure split
+]
+
 LABELING_PROTOCOL = """# Gold labeling protocol
 
 Label each condition in `gold_labels.csv` against the generated code in `code/<scenario>.txt`.
@@ -68,7 +80,14 @@ Label each condition in `gold_labels.csv` against the generated code in `code/<s
 - `rule`: stated in, or directly implied by, the original rule text.
 - `derived`: an input-validation or sanity constraint the original text does not state.
 
+## note — start with tags (separate with `;`), then free text
+- `seen`: you saw a judge verdict or an analysis of this row before labeling
+- `ambiguous`: the label depends on how the spec row is read (explain after `:`)
+- `mixed`: the condition is implemented differently in different places
+- `direction`: boundary is right but applied in the opposite direction
+
 Use `note` for anything ambiguous. Do not look at judge outputs before labeling.
+Scoring reports results with and without `seen` / `ambiguous` rows.
 """
 
 
@@ -132,6 +151,16 @@ def majority(votes: list[str]) -> str:
     if len(counts) > 1 and counts[0][1] == counts[1][1]:
         return "undetermined"
     return counts[0][0]
+
+
+def parse_tags(note: str) -> set[str]:
+    """Extract known tags from a note such as 'seen; ambiguous: 이후 포함 여부; ...'."""
+    tags = set()
+    for part in (note or "").split(";"):
+        head = part.split(":", 1)[0].strip().lower()
+        if head in KNOWN_TAGS:
+            tags.add(head)
+    return tags
 
 
 def is_flagged(verdict: str) -> bool:
@@ -292,7 +321,8 @@ def load_gold(snapshot_dir: str) -> dict[tuple[str, str], dict]:
                 problems.append(f"{key}: gold_verdict '{v}'")
             if s not in SOURCES:
                 problems.append(f"{key}: gold_source '{s}'")
-            gold[key] = {"verdict": v, "source": s, "note": row.get("note", "")}
+            note = row.get("note", "")
+            gold[key] = {"verdict": v, "source": s, "note": note, "tags": parse_tags(note)}
     if problems:
         raise SystemExit("Unlabeled or invalid rows in " + path + ":\n  " + "\n  ".join(problems))
     return gold
@@ -362,6 +392,45 @@ def render_markdown(label: str, scores: dict, items: list[dict], gold: dict, met
     return "\n".join(lines)
 
 
+def sensitivity(items: list[dict], gold: dict) -> dict:
+    """Score every judge on each pre-specified subset in SUBSETS."""
+    out = {}
+    for name, include in SUBSETS:
+        keep = [i for i in items
+                if include(gold[(i["scenario_id"], i["condition_id"])].get("tags", set()))]
+        if not keep:
+            continue
+        out[name] = {
+            "n": len(keep),
+            "gold_problems": sum(
+                1 for i in keep if gold[(i["scenario_id"], i["condition_id"])]["verdict"] in PROBLEM
+            ),
+            "scores": score_items(keep, gold),
+        }
+    return out
+
+
+def render_sensitivity(label: str, sens: dict) -> str:
+    names = list(sens.keys())
+    lines = [f"### Pre-specified subsets — {label}", ""]
+    lines.append("Accuracy (problems caught / gold problems). primary = all rows; "
+                 "excl_ambiguous = sensitivity analysis; seen / unseen = exposure split "
+                 "(rows whose judge output was seen before labeling vs not). "
+                 "Descriptive only: no significance tests at this sample size.")
+    lines.append("")
+    header = " | ".join(f"{n} (n={sens[n]['n']}, problems={sens[n]['gold_problems']})" for n in names)
+    lines.append(f"| judge | {header} |")
+    lines.append("|---|" + "---|" * len(names))
+    for j in JUDGES:
+        cells = []
+        for n in names:
+            sc = sens[n]["scores"][j]
+            cells.append(f"{_fmt(sc['accuracy'])} ({sc['problems_caught']}/{sc['gold_problems']})")
+        lines.append(f"| {j} | " + " | ".join(cells) + " |")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def cmd_score(snapshot_dirs: list[str]) -> None:
     all_items, all_gold, sections, report = [], {}, [], {}
     for snap in snapshot_dirs:
@@ -375,8 +444,11 @@ def cmd_score(snapshot_dirs: list[str]) -> None:
             raise SystemExit(f"Conditions without gold rows in {snap}: {missing}")
 
         scores = score_items(items, gold)
-        report[snap] = {"meta": runs["meta"], "scores": scores}
+        sens = sensitivity(items, gold)
+        report[snap] = {"meta": runs["meta"], "scores": scores,
+                        "sensitivity": {k: {**v, "scores": v["scores"]} for k, v in sens.items()}}
         sections.append(render_markdown(snap, scores, items, gold, runs["meta"]))
+        sections.append(render_sensitivity(snap, sens))
 
         tag = os.path.basename(os.path.normpath(snap))
         for i in items:
@@ -386,8 +458,10 @@ def cmd_score(snapshot_dirs: list[str]) -> None:
 
     if len(snapshot_dirs) > 1:
         pooled = score_items(all_items, all_gold)
-        report["pooled"] = {"scores": pooled}
+        pooled_sens = sensitivity(all_items, all_gold)
+        report["pooled"] = {"scores": pooled, "sensitivity": pooled_sens}
         sections.append(render_markdown("pooled", pooled, all_items, all_gold, {"k": "mixed", "temperature": "mixed"}))
+        sections.append(render_sensitivity("pooled", pooled_sens))
 
     md = "# Fidelity judge reliability\n\n" + "\n".join(sections)
     out_dir = os.path.join(snapshot_dirs[0], GOLD_DIR)

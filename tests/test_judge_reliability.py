@@ -155,3 +155,41 @@ def test_score_rejects_unlabeled_rows(snapshot):
         json.dump(runs, f)
     with pytest.raises(SystemExit, match="Unlabeled"):
         jr.cmd_score([snapshot])
+
+
+# --- note tags and sensitivity -------------------------------------------------
+
+def test_parse_tags():
+    assert jr.parse_tags("seen; ambiguous: 이후 포함 여부; 90=False") == {"seen", "ambiguous"}
+    assert jr.parse_tags("Seen;MIXED") == {"seen", "mixed"}
+    assert jr.parse_tags("65세 경계: 64=False") == set()
+    assert jr.parse_tags("") == set()
+
+
+def test_prespecified_subsets():
+    items = [
+        {"scenario_id": "S1", "condition_id": "C1", "v1_haiku": "faithful", "ast": "faithful",
+         "llm_haiku": "faithful", "llm_sonnet": "faithful", "hybrid": "faithful",
+         "llm_haiku_samples": ["faithful"], "llm_sonnet_samples": ["faithful"]},
+        {"scenario_id": "S1", "condition_id": "C2", "v1_haiku": "faithful", "ast": "incorrect",
+         "llm_haiku": "faithful", "llm_sonnet": "incorrect", "hybrid": "incorrect",
+         "llm_haiku_samples": ["faithful"], "llm_sonnet_samples": ["incorrect"]},
+        {"scenario_id": "S1", "condition_id": "C3", "v1_haiku": "faithful", "ast": "undetermined",
+         "llm_haiku": "faithful", "llm_sonnet": "faithful", "hybrid": "faithful",
+         "llm_haiku_samples": ["faithful"], "llm_sonnet_samples": ["faithful"]},
+    ]
+    gold = {
+        ("S1", "C1"): {"verdict": "faithful", "source": "rule", "tags": set()},
+        ("S1", "C2"): {"verdict": "incorrect", "source": "derived", "tags": {"seen"}},
+        ("S1", "C3"): {"verdict": "incorrect", "source": "derived", "tags": {"ambiguous"}},
+    }
+    sens = jr.sensitivity(items, gold)
+    assert list(sens) == ["primary", "excl_ambiguous", "seen", "unseen"]  # exactly the pre-specified set
+    assert sens["primary"]["n"] == 3 and sens["primary"]["gold_problems"] == 2
+    assert sens["excl_ambiguous"]["n"] == 2
+    assert sens["seen"]["n"] == 1 and sens["seen"]["gold_problems"] == 1
+    assert sens["unseen"]["n"] == 2
+    assert sens["seen"]["n"] + sens["unseen"]["n"] == sens["primary"]["n"]  # split is a partition
+    assert sens["unseen"]["scores"]["hybrid"]["accuracy"] == 0.5
+    md = jr.render_sensitivity("t", sens)
+    assert "seen (n=1, problems=1)" in md
