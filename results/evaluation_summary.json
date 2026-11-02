@@ -15,27 +15,72 @@
       "error": 2
     },
     "critical_flags": 0,
-    "warning_flags": 1,
-    "total_flags": 1,
+    "warning_flags": 0,
+    "total_flags": 0,
     "fidelity_score": 1.0,
-    "total_conditions": 2,
-    "faithful_conditions": 2,
+    "total_conditions": 5,
+    "faithful_conditions": 5,
+    "rule_conditions": 2,
+    "rule_faithful_conditions": 2,
+    "fidelity_rule_score": 1.0,
+    "fidelity_method_counts": {
+      "ast": 5
+    },
+    "undetermined_conditions": 0,
     "fidelity_results": [
       {
         "condition_id": "C1",
+        "method": "ast",
+        "verdict": "faithful",
+        "evidence": "boundary matches spec — line 97: age_at_renewal ge 65",
+        "matched_by": "name",
+        "source": "rule",
         "implemented": true,
-        "correct": true,
-        "evidence": "Line 73: `return age_at_renewal >= AGE_SURCHARGE_THRESHOLD` where AGE_SURCHARGE_THRESHOLD = 65 (line 3). The function `_is_age_surcharge_applicable()` implements the exact condition with >= operator and value 65."
+        "correct": true
       },
       {
         "condition_id": "C2",
+        "method": "ast",
+        "verdict": "faithful",
+        "evidence": "boundary matches spec — line 98: claim_free_years ge 5",
+        "matched_by": "name",
+        "source": "rule",
         "implemented": true,
-        "correct": true,
-        "evidence": "Line 84: `return claim_free_years >= CLAIM_FREE_YEARS_THRESHOLD` where CLAIM_FREE_YEARS_THRESHOLD = 5 (line 4). The function `_is_no_claim_discount_applicable()` implements the exact condition with >= operator and value 5."
+        "correct": true
+      },
+      {
+        "condition_id": "C3",
+        "method": "ast",
+        "verdict": "faithful",
+        "evidence": "boundary matches spec — line 71: base_premium le 0",
+        "matched_by": "name",
+        "source": "derived",
+        "implemented": true,
+        "correct": true
+      },
+      {
+        "condition_id": "C4",
+        "method": "ast",
+        "verdict": "faithful",
+        "evidence": "boundary matches spec — line 44: age_at_renewal le 0",
+        "matched_by": "name",
+        "source": "derived",
+        "implemented": true,
+        "correct": true
+      },
+      {
+        "condition_id": "C5",
+        "method": "ast",
+        "verdict": "faithful",
+        "evidence": "boundary matches spec — line 55: claim_free_years lt 0",
+        "matched_by": "name",
+        "source": "derived",
+        "implemented": true,
+        "correct": true
       }
     ],
     "status": "completed",
-    "elapsed_seconds": 94.08
+    "elapsed_seconds": 88.18
   },
   {
     "scenario_id": "S2",
@@ -43,43 +88,72 @@
     "first_pass_success": true,
     "final_success": true,
     "self_fix_count": 0,
-    "total_tests": 14,
-    "passed_tests": 14,
+    "total_tests": 13,
+    "passed_tests": 13,
     "test_pass_rate": 1.0,
     "test_coverage_by_category": {
       "normal": 4,
-      "boundary": 5,
+      "boundary": 4,
       "exception": 3,
       "error": 2
     },
     "critical_flags": 0,
     "warning_flags": 1,
     "total_flags": 1,
-    "fidelity_score": 0.6667,
-    "total_conditions": 3,
-    "faithful_conditions": 2,
+    "fidelity_score": 1.0,
+    "total_conditions": 4,
+    "faithful_conditions": 4,
+    "rule_conditions": 2,
+    "rule_faithful_conditions": 2,
+    "fidelity_rule_score": 1.0,
+    "fidelity_method_counts": {
+      "ast": 4
+    },
+    "undetermined_conditions": 0,
     "fidelity_results": [
       {
         "condition_id": "C1",
+        "method": "ast",
+        "verdict": "faithful",
+        "evidence": "boundary matches spec — line 75: days_since_inception gt 90",
+        "matched_by": "name",
+        "source": "rule",
         "implemented": true,
-        "correct": true,
-        "evidence": "Line 107: `return days_since_inception > WAITING_PERIOD_DAYS` where WAITING_PERIOD_DAYS = 90 (line 7). The operator is `>` which matches the spec operator `gt` for 'greater than'."
+        "correct": true
       },
       {
         "condition_id": "C2",
+        "method": "ast",
+        "verdict": "faithful",
+        "evidence": "boundary matches spec — line 54: annual_hospitalization_days_used gt 180",
+        "matched_by": "name",
+        "source": "rule",
         "implemented": true,
-        "correct": false,
-        "evidence": "Line 119: `return annual_hospitalization_days_used < ANNUAL_LIMIT_DAYS` where ANNUAL_LIMIT_DAYS = 180 (line 8). The spec requires operator `lt` (less than) with value 180, but the condition checks if days_used < 180, which means the limit is NOT exceeded. However, the spec states 'must not exceed 180 days', which semantically means annual_hospitalization_days_used should be < 180 (correct logic), but the function name and usage context show this checks if limit is AVAILABLE, not if the condition itself is satisfied. The business rule C2 as stated requires annual_hospitalization_days_used < 180 to be true for the claim to proceed, which is implemented correctly at line 119."
+        "correct": true
       },
       {
         "condition_id": "C3",
+        "method": "ast",
+        "verdict": "faithful",
+        "evidence": "boundary matches spec — line 38: claim_hospitalization_days lt 1",
+        "matched_by": "name",
+        "source": "derived",
         "implemented": true,
-        "correct": true,
-        "evidence": "Line 48: `if claimed_hospitalization_days < MINIMUM_CLAIM_DAYS:` raises ValueError, where MINIMUM_CLAIM_DAYS = 1 (line 10). This enforces that claimed_hospitalization_days >= 1, which matches the spec operator `ge` (greater than or equal) with value 1."
+        "correct": true
+      },
+      {
+        "condition_id": "C4",
+        "method": "ast",
+        "verdict": "faithful",
+        "evidence": "boundary matches spec — line 27: days_since_inception lt 0",
+        "matched_by": "name",
+        "source": "derived",
+        "implemented": true,
+        "correct": true
       }
     ],
     "status": "completed",
-    "elapsed_seconds": 83.9
+    "elapsed_seconds": 86.72
   },
   {
     "scenario_id": "S3",
@@ -100,89 +174,85 @@
     "warning_flags": 0,
     "total_flags": 0,
     "fidelity_score": 1.0,
-    "total_conditions": 3,
-    "faithful_conditions": 3,
-    "fidelity_results": [
-      {
-        "condition_id": "C1",
-        "implemented": true,
-        "correct": true,
-        "evidence": "Line 286: disease_code_match = _is_same_disease(prior_episode.disease_code, readmission_episode.disease_code); Line 289: is_single_hospitalization = _determine_single_hospitalization(disease_code_match=disease_code_match, ...); Function _is_same_disease (lines 197-207) returns True when disease codes match exactly using .strip().upper() comparison, implementing the eq operator for boolean true value"
-      },
-      {
-        "condition_id": "C2",
-        "implemented": true,
-        "correct": true,
-        "evidence": "Line 283: days_between = _calculate_days_between(prior_episode.discharge_date, readmission_episode.admission_date); Line 289: is_single_hospitalization = _determine_single_hospitalization(disease_code_match=disease_code_match, days_between_discharge_and_readmission=days_between); Function _determine_single_hospitalization (lines 210-227) implements: 'days_between_discharge_and_readmission <= READMISSION_WINDOW_DAYS' where READMISSION_WINDOW_DAYS = 180 (line 7), using the le operator with value 180"
-      },
-      {
-        "condition_id": "C3",
-        "implemented": true,
-        "correct": true,
-        "evidence": "Line 299: cumulative_annual_benefit = _calculate_cumulative_annual_benefit(previous_cumulative_annual_benefit=previous_cumulative_annual_benefit, combined_hospitalization_benefit=combined_hospitalization_benefit, annual_benefit_limit=annual_benefit_limit); Function _calculate_cumulative_annual_benefit (lines 230-254) implements: 'accumulated = previous_cumulative_annual_benefit + combined_hospitalization_benefit; capped = min(accumulated, annual_benefit_limit)' which enforces cumulative_annual_benefit <= annual_benefit_limit using the le operator"
-      }
-    ],
-    "status": "completed",
-    "elapsed_seconds": 126.51
-  },
-  {
-    "scenario_id": "S4",
-    "complexity": "hard",
-    "first_pass_success": true,
-    "final_success": true,
-    "self_fix_count": 0,
-    "total_tests": 13,
-    "passed_tests": 13,
-    "test_pass_rate": 1.0,
-    "test_coverage_by_category": {
-      "normal": 4,
-      "boundary": 4,
-      "exception": 3,
-      "error": 2
+    "total_conditions": 6,
+    "faithful_conditions": 6,
+    "rule_conditions": 3,
+    "rule_faithful_conditions": 3,
+    "fidelity_rule_score": 1.0,
+    "fidelity_method_counts": {
+      "llm": 2,
+      "ast": 4
     },
-    "critical_flags": 0,
-    "warning_flags": 1,
-    "total_flags": 1,
-    "fidelity_score": 0.8,
-    "total_conditions": 5,
-    "faithful_conditions": 4,
+    "undetermined_conditions": 0,
     "fidelity_results": [
       {
         "condition_id": "C1",
+        "method": "llm",
+        "verdict": "faithful",
+        "evidence": "Line 135: `return is_same_disease and (days_between_admissions <= MAX_DAYS_BETWEEN_ADMISSIONS)`. The function returns True only when `is_same_disease` is True (boolean AND), directly implementing the condition that the re-admission must be for the same disease. The `is_same_disease` parameter is validated as a bool at line 120-123.",
+        "matched_by": null,
+        "ast_note": "non-numeric threshold 'true'",
+        "source": "rule",
         "implemented": true,
-        "correct": false,
-        "evidence": "Line 36-39: Code checks 'if total_paid_premium < ZERO' which enforces >= 0 (ge operator). However, the specification requires 'gt' (greater than) 0, not 'ge' (greater than or equal to) 0. The code allows total_paid_premium to equal zero, but the rule requires it to be strictly greater than zero."
+        "correct": true
       },
       {
         "condition_id": "C2",
+        "method": "ast",
+        "verdict": "faithful",
+        "evidence": "boundary matches spec — line 135: days_between_admissions le 180",
+        "matched_by": "name",
+        "source": "rule",
         "implemented": true,
-        "correct": true,
-        "evidence": "Line 41-44: Code checks 'if risk_premium_accumulated < ZERO' which correctly enforces risk_premium_accumulated >= 0 (ge operator with value 0)."
+        "correct": true
       },
       {
         "condition_id": "C3",
+        "method": "ast",
+        "verdict": "faithful",
+        "evidence": "boundary matches spec — line 129: days_between_admissions lt 0",
+        "matched_by": "name",
+        "source": "derived",
         "implemented": true,
-        "correct": true,
-        "evidence": "Line 46-49: Code checks 'if expense_charges_accumulated < ZERO' which correctly enforces expense_charges_accumulated >= 0 (ge operator with value 0)."
+        "correct": true
       },
       {
         "condition_id": "C4",
+        "method": "llm",
+        "verdict": "faithful",
+        "evidence": "Lines 260-264 in `calculate_payable_benefit`: `available_limit = max(annual_benefit_limit - annual_benefits_paid_to_date, ZERO)` and `payable = min(combined_hospitalization_benefit, available_limit)`. This caps the payable benefit so it never exceeds the available annual limit, effectively enforcing `combined_hospitalization_benefit <= annual_benefit_limit`. Additionally, lines 210-214 in `calculate_remaining_annual_limit` compute `remaining = annual_benefit_limit - annual_benefits_paid_to_date - combined_hospitalization_benefit`, which tracks whether the combined benefit stays within the annual limit. Together these implement the `le annual_benefit_limit` constraint.",
+        "matched_by": null,
+        "ast_note": "non-numeric threshold 'annual_benefit_limit'",
+        "source": "rule",
         "implemented": true,
-        "correct": true,
-        "evidence": "Line 51-54: Code checks 'if cancellation_deduction < ZERO' which correctly enforces cancellation_deduction >= 0 (ge operator with value 0)."
+        "correct": true
       },
       {
         "condition_id": "C5",
+        "method": "ast",
+        "verdict": "faithful",
+        "evidence": "boundary matches spec — line 33: annual_benefit_limit le 0",
+        "matched_by": "name",
+        "source": "derived",
         "implemented": true,
-        "correct": true,
-        "evidence": "Line 95-98 in _apply_floor function: Code uses 'max(surrender_value, SURRENDER_VALUE_FLOOR)' where SURRENDER_VALUE_FLOOR = Decimal('0'), which correctly ensures surrender_value_before_floor >= 0 (ge operator with value 0). The final surrender_value_final is guaranteed to be non-negative."
+        "correct": true
+      },
+      {
+        "condition_id": "C6",
+        "method": "ast",
+        "verdict": "faithful",
+        "evidence": "boundary matches spec — line 204: combined_hospitalization_benefit lt 0; line 254: combined_hospitalization_benefit lt 0",
+        "matched_by": "name",
+        "source": "derived",
+        "implemented": true,
+        "correct": true
       }
     ],
     "status": "completed",
-    "elapsed_seconds": 88.05
+    "elapsed_seconds": 151.0
   },
   {
-    "scenario_id": "S5",
+    "scenario_id": "S4",
     "complexity": "hard",
     "first_pass_success": true,
     "final_success": true,
@@ -200,35 +270,167 @@
     "warning_flags": 1,
     "total_flags": 1,
     "fidelity_score": 1.0,
-    "total_conditions": 4,
-    "faithful_conditions": 4,
+    "total_conditions": 5,
+    "faithful_conditions": 5,
+    "rule_conditions": 1,
+    "rule_faithful_conditions": 1,
+    "fidelity_rule_score": 1.0,
+    "fidelity_method_counts": {
+      "ast": 4,
+      "llm": 1
+    },
+    "undetermined_conditions": 0,
     "fidelity_results": [
       {
         "condition_id": "C1",
+        "method": "ast",
+        "verdict": "faithful",
+        "evidence": "boundary matches spec — line 39: cumulative_paid_premium le 0",
+        "matched_by": "name",
+        "source": "derived",
         "implemented": true,
-        "correct": true,
-        "evidence": "Line 127: `return days_since_policy_inception <= WAITING_PERIOD_DAYS` in `_is_within_waiting_period()` function, which returns True if within waiting period. Line 155: `after_waiting_period = not _is_within_waiting_period(days_since_policy_inception)` implements the check for days > 90. WAITING_PERIOD_DAYS = 90 (line 6). The logic correctly checks if diagnosis is strictly after 90 days (gt operator)."
+        "correct": true
       },
       {
         "condition_id": "C2",
+        "method": "ast",
+        "verdict": "faithful",
+        "evidence": "boundary matches spec — line 46: risk_premium lt 0",
+        "matched_by": "name",
+        "source": "derived",
         "implemented": true,
-        "correct": true,
-        "evidence": "Line 11-15: `COVERED_DISEASE_CATEGORIES = frozenset(['cancer', 'acute_myocardial_infarction', 'stroke'])`. Line 137: `return disease_category in COVERED_DISEASE_CATEGORIES` in `_is_covered_disease()` function implements the 'in' operator check against the three major disease categories exactly as specified."
+        "correct": true
       },
       {
         "condition_id": "C3",
+        "method": "ast",
+        "verdict": "faithful",
+        "evidence": "boundary matches spec — line 53: expense_loading lt 0",
+        "matched_by": "name",
+        "source": "derived",
         "implemented": true,
-        "correct": true,
-        "evidence": "Line 17-20: `MINOR_CANCER_TYPES = frozenset(['thyroid_cancer', 'skin_cancer'])`. Line 149: `return disease_category == 'cancer' and cancer_type in MINOR_CANCER_TYPES` in `_is_minor_cancer()` function implements the 'in' operator check against the two minor cancer types exactly as specified."
+        "correct": true
       },
       {
         "condition_id": "C4",
+        "method": "ast",
+        "verdict": "faithful",
+        "evidence": "boundary matches spec — line 60: surrender_deduction lt 0",
+        "matched_by": "name",
+        "source": "rule",
         "implemented": true,
-        "correct": true,
-        "evidence": "Line 22: `ACTIVE_POLICY_STATUS = 'active'`. Line 165: `return policy_status == ACTIVE_POLICY_STATUS` in `_is_policy_active()` function implements the 'eq' operator check for 'active' status exactly as specified."
+        "correct": true
+      },
+      {
+        "condition_id": "C5",
+        "method": "llm",
+        "verdict": "faithful",
+        "evidence": "Line 131: `surrender_refund_amount = max(raw_refund, ZERO)` where ZERO = Decimal('0') (line 5). This ensures the surrender refund amount is floored at zero, meaning it can never be negative (i.e., surrender_refund_amount >= 0). The result is then rounded and returned at line 132.",
+        "matched_by": null,
+        "ast_note": "no comparison of 'surrender_refund_amount' against 0 found",
+        "source": "derived",
+        "implemented": true,
+        "correct": true
       }
     ],
     "status": "completed",
-    "elapsed_seconds": 111.93
+    "elapsed_seconds": 95.64
+  },
+  {
+    "scenario_id": "S5",
+    "complexity": "hard",
+    "first_pass_success": true,
+    "final_success": true,
+    "self_fix_count": 0,
+    "total_tests": 14,
+    "passed_tests": 14,
+    "test_pass_rate": 1.0,
+    "test_coverage_by_category": {
+      "normal": 4,
+      "boundary": 5,
+      "exception": 3,
+      "error": 2
+    },
+    "critical_flags": 0,
+    "warning_flags": 1,
+    "total_flags": 1,
+    "fidelity_score": 0.8333,
+    "total_conditions": 6,
+    "faithful_conditions": 5,
+    "rule_conditions": 3,
+    "rule_faithful_conditions": 3,
+    "fidelity_rule_score": 1.0,
+    "fidelity_method_counts": {
+      "ast": 3,
+      "llm": 3
+    },
+    "undetermined_conditions": 0,
+    "fidelity_results": [
+      {
+        "condition_id": "C1",
+        "method": "ast",
+        "verdict": "faithful",
+        "evidence": "boundary matches spec — line 78: days_since_policy_start ge 90",
+        "matched_by": "name",
+        "source": "rule",
+        "implemented": true,
+        "correct": true
+      },
+      {
+        "condition_id": "C2",
+        "method": "llm",
+        "verdict": "faithful",
+        "evidence": "Lines 10-14 define MAJOR_DISEASE_CATEGORIES as frozenset(['cancer', 'heart_disease', 'cerebrovascular_disease']). Line 91 in _is_major_disease returns 'disease_category in MAJOR_DISEASE_CATEGORIES', which checks membership in exactly the three specified values. This function is called at line 126 within _is_eligible.",
+        "matched_by": null,
+        "ast_note": "operator 'in' not supported by AST check",
+        "source": "rule",
+        "implemented": true,
+        "correct": true
+      },
+      {
+        "condition_id": "C3",
+        "method": "llm",
+        "verdict": "faithful",
+        "evidence": "Lines 16-19 define MINOR_CANCER_TYPES as frozenset(['thyroid_cancer', 'skin_cancer']). Line 147 in _is_minor_cancer returns 'cancer_type in MINOR_CANCER_TYPES', checking membership in exactly the two specified cancer types. Additionally, lines 143-144 ensure disease_category must be 'cancer' before checking cancer_type.",
+        "matched_by": null,
+        "ast_note": "operator 'in' not supported by AST check",
+        "source": "rule",
+        "implemented": true,
+        "correct": true
+      },
+      {
+        "condition_id": "C4",
+        "method": "ast",
+        "verdict": "incorrect",
+        "evidence": "spec requires standard_benefit_amount gt 0, code has line 54: standard_benefit_amount lt 0",
+        "matched_by": "name",
+        "source": "derived",
+        "implemented": true,
+        "correct": false
+      },
+      {
+        "condition_id": "C5",
+        "method": "ast",
+        "verdict": "faithful",
+        "evidence": "boundary matches spec — line 42: days_since_policy_start lt 0",
+        "matched_by": "name",
+        "source": "derived",
+        "implemented": true,
+        "correct": true
+      },
+      {
+        "condition_id": "C6",
+        "method": "llm",
+        "verdict": "faithful",
+        "evidence": "Line 21 defines POLICY_STATUS_ACTIVE = 'active'. Line 104 in _is_policy_active returns 'policy_status == POLICY_STATUS_ACTIVE', which checks for exact equality with 'active'. This function is called at line 127 within _is_eligible.",
+        "matched_by": null,
+        "ast_note": "non-numeric threshold 'active'",
+        "source": "derived",
+        "implemented": true,
+        "correct": true
+      }
+    ],
+    "status": "completed",
+    "elapsed_seconds": 99.38
   }
 ]
