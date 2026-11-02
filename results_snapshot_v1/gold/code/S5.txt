@@ -1,0 +1,379 @@
+   1: from decimal import Decimal, ROUND_HALF_UP
+   2: from datetime import date, timedelta
+   3: from typing import Optional
+   4: 
+   5: # Constants
+   6: WAITING_PERIOD_DAYS = 90
+   7: MINOR_CANCER_BENEFIT_RATE = Decimal("0.20")
+   8: FULL_BENEFIT_RATE = Decimal("1.00")
+   9: ZERO_BENEFIT = Decimal("0.00")
+  10: MONETARY_QUANTIZE = Decimal("0.01")
+  11: 
+  12: COVERED_DISEASE_CATEGORIES = frozenset([
+  13:     "cancer",
+  14:     "acute_myocardial_infarction",
+  15:     "stroke",
+  16: ])
+  17: 
+  18: MINOR_CANCER_TYPES = frozenset([
+  19:     "thyroid_cancer",
+  20:     "skin_cancer",
+  21: ])
+  22: 
+  23: ACTIVE_POLICY_STATUS = "active"
+  24: 
+  25: 
+  26: def _validate_inputs(
+  27:     days_since_policy_inception: int,
+  28:     disease_category: str,
+  29:     contracted_diagnosis_benefit_amount: Decimal,
+  30:     policy_status: str,
+  31:     cancer_type: Optional[str],
+  32: ) -> None:
+  33:     """
+  34:     Validate all input parameters for the diagnosis benefit rule.
+  35: 
+  36:     Raises:
+  37:         ValueError: If any input parameter is invalid.
+  38:     """
+  39:     if not isinstance(days_since_policy_inception, int):
+  40:         raise ValueError(
+  41:             f"days_since_policy_inception must be an integer, "
+  42:             f"got {type(days_since_policy_inception).__name__}."
+  43:         )
+  44:     if days_since_policy_inception < 0:
+  45:         raise ValueError(
+  46:             f"days_since_policy_inception must be non-negative, "
+  47:             f"got {days_since_policy_inception}."
+  48:         )
+  49: 
+  50:     if not isinstance(disease_category, str) or not disease_category.strip():
+  51:         raise ValueError(
+  52:             "disease_category must be a non-empty string."
+  53:         )
+  54: 
+  55:     if not isinstance(contracted_diagnosis_benefit_amount, Decimal):
+  56:         raise ValueError(
+  57:             f"contracted_diagnosis_benefit_amount must be a Decimal, "
+  58:             f"got {type(contracted_diagnosis_benefit_amount).__name__}."
+  59:         )
+  60:     if contracted_diagnosis_benefit_amount < ZERO_BENEFIT:
+  61:         raise ValueError(
+  62:             f"contracted_diagnosis_benefit_amount must be non-negative, "
+  63:             f"got {contracted_diagnosis_benefit_amount}."
+  64:         )
+  65: 
+  66:     if not isinstance(policy_status, str) or not policy_status.strip():
+  67:         raise ValueError(
+  68:             "policy_status must be a non-empty string."
+  69:         )
+  70: 
+  71:     if cancer_type is not None:
+  72:         if not isinstance(cancer_type, str) or not cancer_type.strip():
+  73:             raise ValueError(
+  74:                 "cancer_type must be a non-empty string when provided."
+  75:             )
+  76: 
+  77:     if disease_category == "cancer" and cancer_type is None:
+  78:         raise ValueError(
+  79:             "cancer_type must be provided when disease_category is 'cancer'."
+  80:         )
+  81: 
+  82: 
+  83: def _is_within_waiting_period(days_since_policy_inception: int) -> bool:
+  84:     """
+  85:     Determine if the diagnosis falls within the 90-day waiting (exclusion) period.
+  86: 
+  87:     The waiting period covers days 0 through 90 inclusive. Only diagnoses
+  88:     occurring strictly after day 90 (i.e., day 91 or later) are eligible.
+  89: 
+  90:     Args:
+  91:         days_since_policy_inception: Number of days elapsed since policy inception.
+  92: 
+  93:     Returns:
+  94:         True if the diagnosis is within the waiting period (not eligible),
+  95:         False if the diagnosis is after the waiting period (potentially eligible).
+  96:     """
+  97:     return days_since_policy_inception <= WAITING_PERIOD_DAYS
+  98: 
+  99: 
+ 100: def _is_covered_disease(disease_category: str) -> bool:
+ 101:     """
+ 102:     Check whether the diagnosed disease belongs to one of the three covered
+ 103:     major disease categories.
+ 104: 
+ 105:     Args:
+ 106:         disease_category: The category of the diagnosed disease.
+ 107: 
+ 108:     Returns:
+ 109:         True if the disease is covered, False otherwise.
+ 110:     """
+ 111:     return disease_category in COVERED_DISEASE_CATEGORIES
+ 112: 
+ 113: 
+ 114: def _is_minor_cancer(disease_category: str, cancer_type: Optional[str]) -> bool:
+ 115:     """
+ 116:     Determine if the diagnosis is a minor cancer (thyroid or skin cancer).
+ 117: 
+ 118:     Minor cancers are a subset of the cancer category and receive a reduced
+ 119:     benefit of 20% of the contracted diagnosis benefit amount.
+ 120: 
+ 121:     Args:
+ 122:         disease_category: The category of the diagnosed disease.
+ 123:         cancer_type: The specific type of cancer, if applicable.
+ 124: 
+ 125:     Returns:
+ 126:         True if the diagnosis is a minor cancer, False otherwise.
+ 127:     """
+ 128:     return disease_category == "cancer" and cancer_type in MINOR_CANCER_TYPES
+ 129: 
+ 130: 
+ 131: def _is_policy_active(policy_status: str) -> bool:
+ 132:     """
+ 133:     Check whether the policy is active and in-force at the time of diagnosis.
+ 134: 
+ 135:     Args:
+ 136:         policy_status: The current status of the insurance policy.
+ 137: 
+ 138:     Returns:
+ 139:         True if the policy is active, False otherwise.
+ 140:     """
+ 141:     return policy_status == ACTIVE_POLICY_STATUS
+ 142: 
+ 143: 
+ 144: def _check_eligibility(
+ 145:     days_since_policy_inception: int,
+ 146:     disease_category: str,
+ 147:     policy_status: str,
+ 148: ) -> bool:
+ 149:     """
+ 150:     Determine overall eligibility for the diagnosis benefit.
+ 151: 
+ 152:     Eligibility requires all of the following:
+ 153:     - Diagnosis occurs strictly after the 90-day waiting period (day 91+).
+ 154:     - The diagnosed disease is one of the three covered major disease categories.
+ 155:     - The policy is active and in-force at the time of diagnosis.
+ 156: 
+ 157:     Args:
+ 158:         days_since_policy_inception: Number of days elapsed since policy inception.
+ 159:         disease_category: The category of the diagnosed disease.
+ 160:         policy_status: The current status of the insurance policy.
+ 161: 
+ 162:     Returns:
+ 163:         True if all eligibility conditions are met, False otherwise.
+ 164:     """
+ 165:     after_waiting_period = not _is_within_waiting_period(days_since_policy_inception)
+ 166:     covered = _is_covered_disease(disease_category)
+ 167:     active = _is_policy_active(policy_status)
+ 168:     return after_waiting_period and covered and active
+ 169: 
+ 170: 
+ 171: def _calculate_standard_benefit(
+ 172:     contracted_diagnosis_benefit_amount: Decimal,
+ 173: ) -> Decimal:
+ 174:     """
+ 175:     Calculate the full (100%) diagnosis benefit for major diseases that are
+ 176:     not classified as minor cancers.
+ 177: 
+ 178:     Args:
+ 179:         contracted_diagnosis_benefit_amount: The contracted benefit amount
+ 180:             as specified in the policy.
+ 181: 
+ 182:     Returns:
+ 183:         The full contracted benefit amount, rounded to 2 decimal places.
+ 184:     """
+ 185:     benefit = contracted_diagnosis_benefit_amount * FULL_BENEFIT_RATE
+ 186:     return benefit.quantize(MONETARY_QUANTIZE, rounding=ROUND_HALF_UP)
+ 187: 
+ 188: 
+ 189: def _calculate_minor_cancer_benefit(
+ 190:     contracted_diagnosis_benefit_amount: Decimal,
+ 191: ) -> Decimal:
+ 192:     """
+ 193:     Calculate the reduced (20%) diagnosis benefit for minor cancers
+ 194:     (thyroid cancer or skin cancer).
+ 195: 
+ 196:     The minor cancer benefit rate of 20% is fixed per policy contract terms
+ 197:     and cannot be altered by endorsement unless explicitly stated otherwise.
+ 198: 
+ 199:     Args:
+ 200:         contracted_diagnosis_benefit_amount: The contracted benefit amount
+ 201:             as specified in the policy.
+ 202: 
+ 203:     Returns:
+ 204:         20% of the contracted benefit amount, rounded to 2 decimal places.
+ 205:     """
+ 206:     benefit = contracted_diagnosis_benefit_amount * MINOR_CANCER_BENEFIT_RATE
+ 207:     return benefit.quantize(MONETARY_QUANTIZE, rounding=ROUND_HALF_UP)
+ 208: 
+ 209: 
+ 210: def apply_rule(
+ 211:     days_since_policy_inception: int,
+ 212:     disease_category: str,
+ 213:     contracted_diagnosis_benefit_amount: Decimal,
+ 214:     policy_status: str = ACTIVE_POLICY_STATUS,
+ 215:     cancer_type: Optional[str] = None,
+ 216: ) -> dict:
+ 217:     """
+ 218:     Apply the 3 Major Disease Diagnosis Benefit rule with waiting period
+ 219:     and minor cancer reduction.
+ 220: 
+ 221:     This rule pays a diagnosis benefit for three major diseases — cancer,
+ 222:     acute myocardial infarction, and stroke — subject to the following conditions:
+ 223: 
+ 224:     1. **Waiting Period (면책기간):** The diagnosis must occur strictly after
+ 225:        90 days from the policy inception date. Diagnoses on or before day 90
+ 226:        are excluded from coverage.
+ 227: 
+ 228:     2. **Covered Disease Categories:** Only the following three categories
+ 229:        are covered:
+ 230:        - cancer (암)
+ 231:        - acute_myocardial_infarction (급성심근경색)
+ 232:        - stroke (뇌졸중)
+ 233: 
+ 234:     3. **Minor Cancer Reduction (소액암):** Thyroid cancer (갑상선암) and
+ 235:        skin cancer (피부암) are classified as minor cancers and receive
+ 236:        exactly 20% of the contracted diagnosis benefit amount. All other
+ 237:        cancers receive 100%.
+ 238: 
+ 239:     4. **Policy Status:** The policy must be active and all premiums current
+ 240:        at the time of diagnosis.
+ 241: 
+ 242:     Args:
+ 243:         days_since_policy_inception: Number of days elapsed since the policy
+ 244:             inception date. Must be a non-negative integer.
+ 245:         disease_category: The category of the diagnosed disease. Must be one
+ 246:             of 'cancer', 'acute_myocardial_infarction', or 'stroke' to be
+ 247:             eligible for benefit payment.
+ 248:         contracted_diagnosis_benefit_amount: The contracted benefit amount
+ 249:             as specified in the policy. Must be a non-negative Decimal.
+ 250:         policy_status: The current status of the insurance policy. Defaults
+ 251:             to 'active'. Must be 'active' for benefit to be payable.
+ 252:         cancer_type: The specific type of cancer diagnosed. Required when
+ 253:             disease_category is 'cancer'. Use 'thyroid_cancer' or
+ 254:             'skin_cancer' for minor cancer classification.
+ 255: 
+ 256:     Returns:
+ 257:         A dictionary containing:
+ 258:         - 'is_eligible' (bool): Whether the claim meets all eligibility criteria.
+ 259:         - 'is_minor_cancer' (bool): Whether the diagnosis is a minor cancer.
+ 260:         - 'payable_benefit' (Decimal): The final benefit amount payable.
+ 261:         - 'benefit_rate_applied' (Decimal): The rate applied (0.20 or 1.00).
+ 262:         - 'denial_reason' (str or None): Reason for denial if not eligible.
+ 263: 
+ 264:     Raises:
+ 265:         ValueError: If any input parameter is invalid.
+ 266: 
+ 267:     Examples:
+ 268:         >>> # Standard cancer claim after waiting period
+ 269:         >>> apply_rule(
+ 270:         ...     days_since_policy_inception=100,
+ 271:         ...     disease_category='cancer',
+ 272:         ...     contracted_diagnosis_benefit_amount=Decimal('10000000'),
+ 273:         ...     policy_status='active',
+ 274:         ...     cancer_type='lung_cancer'
+ 275:         ... )
+ 276:         {'is_eligible': True, 'is_minor_cancer': False,
+ 277:          'payable_benefit': Decimal('10000000.00'), 'benefit_rate_applied': Decimal('1.00'),
+ 278:          'denial_reason': None}
+ 279: 
+ 280:         >>> # Thyroid cancer claim — minor cancer reduction applies
+ 281:         >>> apply_rule(
+ 282:         ...     days_since_policy_inception=100,
+ 283:         ...     disease_category='cancer',
+ 284:         ...     contracted_diagnosis_benefit_amount=Decimal('10000000'),
+ 285:         ...     policy_status='active',
+ 286:         ...     cancer_type='thyroid_cancer'
+ 287:         ... )
+ 288:         {'is_eligible': True, 'is_minor_cancer': True,
+ 289:          'payable_benefit': Decimal('2000000.00'), 'benefit_rate_applied': Decimal('0.20'),
+ 290:          'denial_reason': None}
+ 291:     """
+ 292:     _validate_inputs(
+ 293:         days_since_policy_inception=days_since_policy_inception,
+ 294:         disease_category=disease_category,
+ 295:         contracted_diagnosis_benefit_amount=contracted_diagnosis_benefit_amount,
+ 296:         policy_status=policy_status,
+ 297:         cancer_type=cancer_type,
+ 298:     )
+ 299: 
+ 300:     denial_reason = _determine_denial_reason(
+ 301:         days_since_policy_inception=days_since_policy_inception,
+ 302:         disease_category=disease_category,
+ 303:         policy_status=policy_status,
+ 304:     )
+ 305: 
+ 306:     is_eligible = denial_reason is None
+ 307: 
+ 308:     if not is_eligible:
+ 309:         return {
+ 310:             "is_eligible": False,
+ 311:             "is_minor_cancer": False,
+ 312:             "payable_benefit": ZERO_BENEFIT,
+ 313:             "benefit_rate_applied": ZERO_BENEFIT,
+ 314:             "denial_reason": denial_reason,
+ 315:         }
+ 316: 
+ 317:     minor_cancer = _is_minor_cancer(disease_category, cancer_type)
+ 318: 
+ 319:     if minor_cancer:
+ 320:         payable_benefit = _calculate_minor_cancer_benefit(
+ 321:             contracted_diagnosis_benefit_amount
+ 322:         )
+ 323:         benefit_rate_applied = MINOR_CANCER_BENEFIT_RATE
+ 324:     else:
+ 325:         payable_benefit = _calculate_standard_benefit(
+ 326:             contracted_diagnosis_benefit_amount
+ 327:         )
+ 328:         benefit_rate_applied = FULL_BENEFIT_RATE
+ 329: 
+ 330:     return {
+ 331:         "is_eligible": True,
+ 332:         "is_minor_cancer": minor_cancer,
+ 333:         "payable_benefit": payable_benefit,
+ 334:         "benefit_rate_applied": benefit_rate_applied,
+ 335:         "denial_reason": None,
+ 336:     }
+ 337: 
+ 338: 
+ 339: def _determine_denial_reason(
+ 340:     days_since_policy_inception: int,
+ 341:     disease_category: str,
+ 342:     policy_status: str,
+ 343: ) -> Optional[str]:
+ 344:     """
+ 345:     Determine the reason for benefit denial, if any.
+ 346: 
+ 347:     Evaluates each eligibility condition independently and returns a
+ 348:     descriptive denial reason for the first failing condition, or None
+ 349:     if all conditions are satisfied.
+ 350: 
+ 351:     Args:
+ 352:         days_since_policy_inception: Number of days elapsed since policy inception.
+ 353:         disease_category: The category of the diagnosed disease.
+ 354:         policy_status: The current status of the insurance policy.
+ 355: 
+ 356:     Returns:
+ 357:         A descriptive denial reason string if ineligible, or None if eligible.
+ 358:     """
+ 359:     if not _is_policy_active(policy_status):
+ 360:         return (
+ 361:             f"Policy is not active (status: '{policy_status}'). "
+ 362:             f"Benefit is payable only when the policy is active and all premiums are current."
+ 363:         )
+ 364: 
+ 365:     if _is_within_waiting_period(days_since_policy_inception):
+ 366:         return (
+ 367:             f"Diagnosis occurred within the {WAITING_PERIOD_DAYS}-day waiting period "
+ 368:             f"(day {days_since_policy_inception} of {WAITING_PERIOD_DAYS}). "
+ 369:             f"Coverage begins strictly after day {WAITING_PERIOD_DAYS}."
+ 370:         )
+ 371: 
+ 372:     if not _is_covered_disease(disease_category):
+ 373:         covered_list = ", ".join(sorted(COVERED_DISEASE_CATEGORIES))
+ 374:         return (
+ 375:             f"Disease category '{disease_category}' is not covered. "
+ 376:             f"Covered categories are: {covered_list}."
+ 377:         )
+ 378: 
+ 379:     return None

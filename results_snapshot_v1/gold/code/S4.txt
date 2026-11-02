@@ -1,0 +1,219 @@
+   1: from decimal import Decimal, ROUND_HALF_UP
+   2: from datetime import date, timedelta
+   3: 
+   4: # Constants
+   5: ZERO = Decimal("0")
+   6: SURRENDER_VALUE_FLOOR = Decimal("0")
+   7: MONETARY_QUANTIZE = Decimal("1")  # KRW is a whole-number currency (no sub-unit)
+   8: 
+   9: 
+  10: def _validate_inputs(
+  11:     total_paid_premium: Decimal,
+  12:     risk_premium_accumulated: Decimal,
+  13:     expense_charges_accumulated: Decimal,
+  14:     cancellation_deduction: Decimal,
+  15: ) -> None:
+  16:     """
+  17:     Validate all input parameters against business rule conditions.
+  18: 
+  19:     Raises:
+  20:         ValueError: If any input violates the defined conditions.
+  21:     """
+  22:     if not isinstance(total_paid_premium, Decimal):
+  23:         raise ValueError(
+  24:             f"total_paid_premium must be a Decimal, got {type(total_paid_premium).__name__}."
+  25:         )
+  26:     if not isinstance(risk_premium_accumulated, Decimal):
+  27:         raise ValueError(
+  28:             f"risk_premium_accumulated must be a Decimal, got {type(risk_premium_accumulated).__name__}."
+  29:         )
+  30:     if not isinstance(expense_charges_accumulated, Decimal):
+  31:         raise ValueError(
+  32:             f"expense_charges_accumulated must be a Decimal, got {type(expense_charges_accumulated).__name__}."
+  33:         )
+  34:     if not isinstance(cancellation_deduction, Decimal):
+  35:         raise ValueError(
+  36:             f"cancellation_deduction must be a Decimal, got {type(cancellation_deduction).__name__}."
+  37:         )
+  38: 
+  39:     # C1: total_paid_premium must be >= 0 (gt 0 is a business trigger, but >= 0 is the hard constraint)
+  40:     if total_paid_premium < ZERO:
+  41:         raise ValueError(
+  42:             f"total_paid_premium must be greater than or equal to zero (KRW), "
+  43:             f"got {total_paid_premium}."
+  44:         )
+  45: 
+  46:     # C2: risk_premium_accumulated must be non-negative
+  47:     if risk_premium_accumulated < ZERO:
+  48:         raise ValueError(
+  49:             f"risk_premium_accumulated must be non-negative (KRW), "
+  50:             f"got {risk_premium_accumulated}."
+  51:         )
+  52: 
+  53:     # C3: expense_charges_accumulated must be non-negative
+  54:     if expense_charges_accumulated < ZERO:
+  55:         raise ValueError(
+  56:             f"expense_charges_accumulated must be non-negative (KRW), "
+  57:             f"got {expense_charges_accumulated}."
+  58:         )
+  59: 
+  60:     # C4: cancellation_deduction must be non-negative
+  61:     if cancellation_deduction < ZERO:
+  62:         raise ValueError(
+  63:             f"cancellation_deduction must be non-negative (KRW), "
+  64:             f"got {cancellation_deduction}."
+  65:         )
+  66: 
+  67: 
+  68: def _calculate_base_refund(
+  69:     total_paid_premium: Decimal,
+  70:     risk_premium_accumulated: Decimal,
+  71:     expense_charges_accumulated: Decimal,
+  72: ) -> Decimal:
+  73:     """
+  74:     CALC1: Calculate the base refund amount before applying the cancellation deduction.
+  75: 
+  76:     Formula:
+  77:         base_refund = total_paid_premium - risk_premium_accumulated - expense_charges_accumulated
+  78: 
+  79:     Args:
+  80:         total_paid_premium: Total cumulative premium paid by the policyholder (KRW).
+  81:         risk_premium_accumulated: Total risk premium consumed over the policy period (KRW).
+  82:         expense_charges_accumulated: Total expense charges deducted over the policy period (KRW).
+  83: 
+  84:     Returns:
+  85:         The base refund amount as a Decimal (KRW). May be negative in abnormal data scenarios.
+  86:     """
+  87:     base_refund = total_paid_premium - risk_premium_accumulated - expense_charges_accumulated
+  88:     return base_refund.quantize(MONETARY_QUANTIZE, rounding=ROUND_HALF_UP)
+  89: 
+  90: 
+  91: def _apply_cancellation_deduction(
+  92:     base_refund: Decimal,
+  93:     cancellation_deduction: Decimal,
+  94: ) -> Decimal:
+  95:     """
+  96:     CALC2: Apply the cancellation deduction to the base refund.
+  97: 
+  98:     Formula:
+  99:         surrender_value = base_refund - cancellation_deduction
+ 100: 
+ 101:     Args:
+ 102:         base_refund: The base refund amount before cancellation deduction (KRW).
+ 103:         cancellation_deduction: The approved cancellation deduction amount (KRW).
+ 104: 
+ 105:     Returns:
+ 106:         The surrender value before the zero floor is applied (KRW). May be negative.
+ 107:     """
+ 108:     surrender_value = base_refund - cancellation_deduction
+ 109:     return surrender_value.quantize(MONETARY_QUANTIZE, rounding=ROUND_HALF_UP)
+ 110: 
+ 111: 
+ 112: def _apply_floor(surrender_value: Decimal) -> Decimal:
+ 113:     """
+ 114:     CALC3: Apply a floor of zero to ensure the surrender value is never negative.
+ 115: 
+ 116:     Formula:
+ 117:         surrender_value_final = MAX(surrender_value, 0)
+ 118: 
+ 119:     Args:
+ 120:         surrender_value: The computed surrender value before floor (KRW).
+ 121: 
+ 122:     Returns:
+ 123:         The final surrender value, guaranteed to be >= 0 (KRW).
+ 124:     """
+ 125:     return max(surrender_value, SURRENDER_VALUE_FLOOR)
+ 126: 
+ 127: 
+ 128: def apply_rule(
+ 129:     total_paid_premium: Decimal,
+ 130:     risk_premium_accumulated: Decimal,
+ 131:     expense_charges_accumulated: Decimal,
+ 132:     cancellation_deduction: Decimal,
+ 133: ) -> dict:
+ 134:     """
+ 135:     Rule S4 — Surrender Value Calculation with Cancellation Deduction.
+ 136: 
+ 137:     Calculates the surrender refund amount a policyholder receives upon surrendering
+ 138:     their policy. The calculation proceeds in three steps:
+ 139: 
+ 140:         1. Compute the base refund by subtracting accumulated risk premiums and
+ 141:            expense charges from the total premiums paid.
+ 142:         2. Subtract the approved cancellation deduction from the base refund.
+ 143:         3. Apply a floor of zero so the final surrender value is never negative.
+ 144: 
+ 145:     Business Conditions:
+ 146:         - C1: total_paid_premium >= 0 (KRW)
+ 147:         - C2: risk_premium_accumulated >= 0 (KRW)
+ 148:         - C3: expense_charges_accumulated >= 0 (KRW)
+ 149:         - C4: cancellation_deduction >= 0 (KRW)
+ 150:         - C5: surrender_value_final is floored at 0 (KRW)
+ 151: 
+ 152:     Edge Cases Handled:
+ 153:         - E1: All values zero → surrender value is zero.
+ 154:         - E2: Deductions exactly consume all premiums → base refund is zero.
+ 155:         - E3: Cancellation deduction exceeds base refund → floored at zero.
+ 156:         - E4: Cancellation deduction equals base refund → surrender value is zero.
+ 157:         - E5: No deductions at all → surrender value equals total paid premium.
+ 158:         - E6: Accumulated risk premium exceeds total paid (abnormal) → floored at zero.
+ 159: 
+ 160:     Args:
+ 161:         total_paid_premium: Total cumulative premium paid by the policyholder (KRW).
+ 162:             Must be >= 0.
+ 163:         risk_premium_accumulated: Total risk premium consumed over the policy period (KRW).
+ 164:             Must be >= 0.
+ 165:         expense_charges_accumulated: Total expense charges deducted over the policy period (KRW).
+ 166:             Must be >= 0.
+ 167:         cancellation_deduction: Approved cancellation deduction amount per product terms (KRW).
+ 168:             Must be >= 0.
+ 169: 
+ 170:     Returns:
+ 171:         A dictionary containing:
+ 172:             - "base_refund" (Decimal): Intermediate base refund before cancellation deduction.
+ 173:             - "surrender_value_before_floor" (Decimal): Surrender value before zero floor.
+ 174:             - "surrender_value_final" (Decimal): Final surrender value, never negative.
+ 175: 
+ 176:     Raises:
+ 177:         ValueError: If any input is not a Decimal or violates the non-negativity constraints.
+ 178: 
+ 179:     Examples:
+ 180:         >>> apply_rule(
+ 181:         ...     total_paid_premium=Decimal("1000000"),
+ 182:         ...     risk_premium_accumulated=Decimal("300000"),
+ 183:         ...     expense_charges_accumulated=Decimal("200000"),
+ 184:         ...     cancellation_deduction=Decimal("100000"),
+ 185:         ... )
+ 186:         {
+ 187:             'base_refund': Decimal('500000'),
+ 188:             'surrender_value_before_floor': Decimal('400000'),
+ 189:             'surrender_value_final': Decimal('400000'),
+ 190:         }
+ 191:     """
+ 192:     _validate_inputs(
+ 193:         total_paid_premium=total_paid_premium,
+ 194:         risk_premium_accumulated=risk_premium_accumulated,
+ 195:         expense_charges_accumulated=expense_charges_accumulated,
+ 196:         cancellation_deduction=cancellation_deduction,
+ 197:     )
+ 198: 
+ 199:     # CALC1: Base refund before cancellation deduction
+ 200:     base_refund = _calculate_base_refund(
+ 201:         total_paid_premium=total_paid_premium,
+ 202:         risk_premium_accumulated=risk_premium_accumulated,
+ 203:         expense_charges_accumulated=expense_charges_accumulated,
+ 204:     )
+ 205: 
+ 206:     # CALC2: Apply cancellation deduction
+ 207:     surrender_value_before_floor = _apply_cancellation_deduction(
+ 208:         base_refund=base_refund,
+ 209:         cancellation_deduction=cancellation_deduction,
+ 210:     )
+ 211: 
+ 212:     # CALC3: Apply zero floor
+ 213:     surrender_value_final = _apply_floor(surrender_value_before_floor)
+ 214: 
+ 215:     return {
+ 216:         "base_refund": base_refund,
+ 217:         "surrender_value_before_floor": surrender_value_before_floor,
+ 218:         "surrender_value_final": surrender_value_final,
+ 219:     }

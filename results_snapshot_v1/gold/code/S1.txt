@@ -1,0 +1,207 @@
+   1: from decimal import Decimal, ROUND_HALF_UP
+   2: from datetime import date, timedelta
+   3: 
+   4: # Constants
+   5: AGE_SURCHARGE_THRESHOLD = 65
+   6: CLAIM_FREE_YEARS_THRESHOLD = 5
+   7: SURCHARGE_RATE_STANDARD = Decimal("0.15")
+   8: SURCHARGE_RATE_NO_CLAIM_DISCOUNT = Decimal("0.10")
+   9: SURCHARGE_RATE_NONE = Decimal("0.00")
+  10: MULTIPLIER_STANDARD = Decimal("1.15")
+  11: MULTIPLIER_NO_CLAIM_DISCOUNT = Decimal("1.10")
+  12: MULTIPLIER_NONE = Decimal("1.00")
+  13: MONETARY_QUANTIZE = Decimal("0.01")
+  14: RATE_QUANTIZE = Decimal("0.0001")
+  15: MIN_BASE_PREMIUM = Decimal("0.00")
+  16: 
+  17: 
+  18: def _validate_inputs(base_premium: Decimal, age_at_renewal: int, claim_free_years: int) -> None:
+  19:     """
+  20:     Validate all input parameters against business constraints.
+  21: 
+  22:     Args:
+  23:         base_premium: The base premium amount before surcharge.
+  24:         age_at_renewal: The policyholder's age in completed years at renewal.
+  25:         claim_free_years: The number of consecutive claim-free years.
+  26: 
+  27:     Raises:
+  28:         TypeError: If inputs are of incorrect types.
+  29:         ValueError: If inputs violate business constraints.
+  30:     """
+  31:     if not isinstance(base_premium, Decimal):
+  32:         raise TypeError(
+  33:             f"base_premium must be a Decimal, got {type(base_premium).__name__}."
+  34:         )
+  35:     if not isinstance(age_at_renewal, int):
+  36:         raise TypeError(
+  37:             f"age_at_renewal must be an int, got {type(age_at_renewal).__name__}."
+  38:         )
+  39:     if not isinstance(claim_free_years, int):
+  40:         raise TypeError(
+  41:             f"claim_free_years must be an int, got {type(claim_free_years).__name__}."
+  42:         )
+  43:     if base_premium <= MIN_BASE_PREMIUM:
+  44:         raise ValueError(
+  45:             f"base_premium must be a positive value greater than zero, got {base_premium}."
+  46:         )
+  47:     if age_at_renewal < 0:
+  48:         raise ValueError(
+  49:             f"age_at_renewal must be a non-negative integer, got {age_at_renewal}."
+  50:         )
+  51:     if claim_free_years < 0:
+  52:         raise ValueError(
+  53:             f"claim_free_years must be a non-negative integer, got {claim_free_years}."
+  54:         )
+  55:     if claim_free_years > age_at_renewal:
+  56:         raise ValueError(
+  57:             f"claim_free_years ({claim_free_years}) cannot exceed age_at_renewal "
+  58:             f"({age_at_renewal}), as it cannot exceed the total policy duration."
+  59:         )
+  60: 
+  61: 
+  62: def _is_age_surcharge_applicable(age_at_renewal: int) -> bool:
+  63:     """
+  64:     Determine whether the age-based surcharge condition (C1) is met.
+  65: 
+  66:     Args:
+  67:         age_at_renewal: The policyholder's age in completed years at renewal.
+  68: 
+  69:     Returns:
+  70:         True if the policyholder is aged 65 or older, False otherwise.
+  71:     """
+  72:     return age_at_renewal >= AGE_SURCHARGE_THRESHOLD
+  73: 
+  74: 
+  75: def _is_no_claim_discount_applicable(claim_free_years: int) -> bool:
+  76:     """
+  77:     Determine whether the no-claim discount condition (C2) is met.
+  78: 
+  79:     Args:
+  80:         claim_free_years: The number of consecutive claim-free years.
+  81: 
+  82:     Returns:
+  83:         True if the policyholder has 5 or more consecutive claim-free years, False otherwise.
+  84:     """
+  85:     return claim_free_years >= CLAIM_FREE_YEARS_THRESHOLD
+  86: 
+  87: 
+  88: def determine_surcharge_rate(age_at_renewal: int, claim_free_years: int) -> Decimal:
+  89:     """
+  90:     Determine the applicable surcharge rate based on age and claim-free history (CALC3).
+  91: 
+  92:     Business logic:
+  93:     - If age >= 65 AND claim_free_years >= 5: surcharge rate = 10% (no-claim discount applied)
+  94:     - If age >= 65 AND claim_free_years < 5:  surcharge rate = 15% (standard age surcharge)
+  95:     - If age < 65:                             surcharge rate = 0%  (no age surcharge)
+  96: 
+  97:     The three rates are mutually exclusive; exactly one applies per renewal.
+  98: 
+  99:     Args:
+ 100:         age_at_renewal: The policyholder's age in completed years at renewal.
+ 101:         claim_free_years: The number of consecutive claim-free years.
+ 102: 
+ 103:     Returns:
+ 104:         A Decimal representing the applicable surcharge rate (0.00, 0.10, or 0.15).
+ 105:     """
+ 106:     if _is_age_surcharge_applicable(age_at_renewal):
+ 107:         if _is_no_claim_discount_applicable(claim_free_years):
+ 108:             return SURCHARGE_RATE_NO_CLAIM_DISCOUNT
+ 109:         return SURCHARGE_RATE_STANDARD
+ 110:     return SURCHARGE_RATE_NONE
+ 111: 
+ 112: 
+ 113: def calculate_renewal_premium(base_premium: Decimal, surcharge_rate: Decimal) -> Decimal:
+ 114:     """
+ 115:     Calculate the renewal premium by applying the surcharge rate to the base premium.
+ 116: 
+ 117:     Args:
+ 118:         base_premium: The base premium amount before surcharge.
+ 119:         surcharge_rate: The applicable surcharge rate as a Decimal (e.g., 0.10 for 10%).
+ 120: 
+ 121:     Returns:
+ 122:         The renewal premium rounded to two decimal places using ROUND_HALF_UP.
+ 123:     """
+ 124:     multiplier = Decimal("1.00") + surcharge_rate
+ 125:     renewal_premium = (base_premium * multiplier).quantize(MONETARY_QUANTIZE, rounding=ROUND_HALF_UP)
+ 126:     return renewal_premium
+ 127: 
+ 128: 
+ 129: def apply_rule(
+ 130:     base_premium: Decimal,
+ 131:     age_at_renewal: int,
+ 132:     claim_free_years: int,
+ 133: ) -> dict:
+ 134:     """
+ 135:     Apply the Renewal Premium Surcharge rule for policyholders aged 65+ (Rule S1).
+ 136: 
+ 137:     At renewal, policyholders aged 65 or older receive a 15% premium increase.
+ 138:     This is reduced to a 10% increase if they have had no claims for the past
+ 139:     5 consecutive years (no-claim discount). Policyholders under 65 receive no
+ 140:     age-based surcharge regardless of their claim history.
+ 141: 
+ 142:     Surcharge rates are mutually exclusive:
+ 143:     - 0%:  age < 65 (no age surcharge)
+ 144:     - 10%: age >= 65 AND claim_free_years >= 5 (no-claim discount applied)
+ 145:     - 15%: age >= 65 AND claim_free_years < 5  (standard age surcharge)
+ 146: 
+ 147:     Args:
+ 148:         base_premium: The base premium amount before any age surcharge. Must be
+ 149:                       a positive Decimal value greater than zero.
+ 150:         age_at_renewal: The policyholder's age in completed years at the time of
+ 151:                         renewal. Must be a non-negative integer.
+ 152:         claim_free_years: The number of consecutive years without a claim prior
+ 153:                           to renewal. Must be a non-negative integer and cannot
+ 154:                           exceed age_at_renewal.
+ 155: 
+ 156:     Returns:
+ 157:         A dictionary containing:
+ 158:             - "renewal_premium" (Decimal): The calculated renewal premium after
+ 159:               applying the applicable surcharge, rounded to 2 decimal places.
+ 160:             - "surcharge_rate" (Decimal): The surcharge rate applied (0.00, 0.10,
+ 161:               or 0.15).
+ 162:             - "surcharge_amount" (Decimal): The monetary amount of the surcharge,
+ 163:               rounded to 2 decimal places.
+ 164:             - "age_surcharge_applicable" (bool): Whether the age condition (C1)
+ 165:               was met.
+ 166:             - "no_claim_discount_applicable" (bool): Whether the no-claim discount
+ 167:               condition (C2) was met and applied.
+ 168: 
+ 169:     Raises:
+ 170:         TypeError: If base_premium is not a Decimal, or age_at_renewal /
+ 171:                    claim_free_years are not integers.
+ 172:         ValueError: If base_premium <= 0, age_at_renewal < 0, claim_free_years < 0,
+ 173:                     or claim_free_years > age_at_renewal.
+ 174: 
+ 175:     Examples:
+ 176:         >>> apply_rule(Decimal("1000.00"), 65, 0)
+ 177:         # age >= 65, claim_free_years < 5 -> 15% surcharge
+ 178:         # renewal_premium = 1150.00, surcharge_rate = 0.15
+ 179: 
+ 180:         >>> apply_rule(Decimal("1000.00"), 65, 5)
+ 181:         # age >= 65, claim_free_years >= 5 -> 10% surcharge (no-claim discount)
+ 182:         # renewal_premium = 1100.00, surcharge_rate = 0.10
+ 183: 
+ 184:         >>> apply_rule(Decimal("1000.00"), 64, 5)
+ 185:         # age < 65 -> no surcharge
+ 186:         # renewal_premium = 1000.00, surcharge_rate = 0.00
+ 187:     """
+ 188:     _validate_inputs(base_premium, age_at_renewal, claim_free_years)
+ 189: 
+ 190:     age_surcharge_applicable = _is_age_surcharge_applicable(age_at_renewal)
+ 191:     no_claim_discount_applicable = (
+ 192:         age_surcharge_applicable and _is_no_claim_discount_applicable(claim_free_years)
+ 193:     )
+ 194: 
+ 195:     surcharge_rate = determine_surcharge_rate(age_at_renewal, claim_free_years)
+ 196:     renewal_premium = calculate_renewal_premium(base_premium, surcharge_rate)
+ 197:     surcharge_amount = (renewal_premium - base_premium).quantize(
+ 198:         MONETARY_QUANTIZE, rounding=ROUND_HALF_UP
+ 199:     )
+ 200: 
+ 201:     return {
+ 202:         "renewal_premium": renewal_premium,
+ 203:         "surcharge_rate": surcharge_rate,
+ 204:         "surcharge_amount": surcharge_amount,
+ 205:         "age_surcharge_applicable": age_surcharge_applicable,
+ 206:         "no_claim_discount_applicable": no_claim_discount_applicable,
+ 207:     }

@@ -1,0 +1,228 @@
+   1: from decimal import Decimal, ROUND_HALF_UP
+   2: from datetime import date, timedelta
+   3: from typing import Tuple
+   4: 
+   5: # Constants
+   6: WAITING_PERIOD_DAYS = 90
+   7: ANNUAL_LIMIT_DAYS = 180
+   8: DAILY_BENEFIT_KRW = Decimal("100000")
+   9: MINIMUM_CLAIM_DAYS = 1
+  10: ZERO_BENEFIT = Decimal("0")
+  11: 
+  12: 
+  13: def _validate_inputs(
+  14:     days_since_inception: int,
+  15:     annual_hospitalization_days_used: int,
+  16:     claimed_hospitalization_days: int,
+  17: ) -> None:
+  18:     """
+  19:     Validate all input parameters for the hospitalization benefit rule.
+  20: 
+  21:     Raises:
+  22:         ValueError: If any input parameter is outside its valid range.
+  23:     """
+  24:     if not isinstance(days_since_inception, int):
+  25:         raise ValueError(
+  26:             f"days_since_inception must be an integer, got {type(days_since_inception).__name__}."
+  27:         )
+  28:     if days_since_inception < 0:
+  29:         raise ValueError(
+  30:             f"days_since_inception must be non-negative, got {days_since_inception}."
+  31:         )
+  32: 
+  33:     if not isinstance(annual_hospitalization_days_used, int):
+  34:         raise ValueError(
+  35:             f"annual_hospitalization_days_used must be an integer, "
+  36:             f"got {type(annual_hospitalization_days_used).__name__}."
+  37:         )
+  38:     if annual_hospitalization_days_used < 0:
+  39:         raise ValueError(
+  40:             f"annual_hospitalization_days_used must be non-negative, "
+  41:             f"got {annual_hospitalization_days_used}."
+  42:         )
+  43:     if annual_hospitalization_days_used > ANNUAL_LIMIT_DAYS:
+  44:         raise ValueError(
+  45:             f"annual_hospitalization_days_used cannot exceed the annual limit of "
+  46:             f"{ANNUAL_LIMIT_DAYS} days, got {annual_hospitalization_days_used}."
+  47:         )
+  48: 
+  49:     if not isinstance(claimed_hospitalization_days, int):
+  50:         raise ValueError(
+  51:             f"claimed_hospitalization_days must be an integer, "
+  52:             f"got {type(claimed_hospitalization_days).__name__}."
+  53:         )
+  54:     if claimed_hospitalization_days < MINIMUM_CLAIM_DAYS:
+  55:         raise ValueError(
+  56:             f"claimed_hospitalization_days must be at least {MINIMUM_CLAIM_DAYS}, "
+  57:             f"got {claimed_hospitalization_days}."
+  58:         )
+  59: 
+  60: 
+  61: def _is_waiting_period_satisfied(days_since_inception: int) -> bool:
+  62:     """
+  63:     Check whether the 90-day waiting period from policy inception has been satisfied.
+  64: 
+  65:     The waiting period is satisfied only when days elapsed since inception
+  66:     is strictly greater than WAITING_PERIOD_DAYS (i.e., day 91 or later).
+  67: 
+  68:     Args:
+  69:         days_since_inception: Number of days elapsed since policy inception date.
+  70: 
+  71:     Returns:
+  72:         True if the waiting period is satisfied, False otherwise.
+  73:     """
+  74:     return days_since_inception > WAITING_PERIOD_DAYS
+  75: 
+  76: 
+  77: def _is_annual_limit_available(annual_hospitalization_days_used: int) -> bool:
+  78:     """
+  79:     Check whether any annual hospitalization days remain within the policy year limit.
+  80: 
+  81:     Args:
+  82:         annual_hospitalization_days_used: Total hospitalization days already claimed
+  83:             in the current policy year.
+  84: 
+  85:     Returns:
+  86:         True if at least one payable day remains, False if the annual limit is exhausted.
+  87:     """
+  88:     return annual_hospitalization_days_used < ANNUAL_LIMIT_DAYS
+  89: 
+  90: 
+  91: def _calculate_remaining_payable_days(annual_hospitalization_days_used: int) -> int:
+  92:     """
+  93:     Calculate the number of hospitalization days remaining within the annual limit.
+  94: 
+  95:     Args:
+  96:         annual_hospitalization_days_used: Total hospitalization days already claimed
+  97:             in the current policy year.
+  98: 
+  99:     Returns:
+ 100:         Number of days still payable under the annual limit (CALC1).
+ 101:     """
+ 102:     return ANNUAL_LIMIT_DAYS - annual_hospitalization_days_used
+ 103: 
+ 104: 
+ 105: def _calculate_eligible_days(
+ 106:     claimed_hospitalization_days: int,
+ 107:     remaining_payable_days: int,
+ 108: ) -> int:
+ 109:     """
+ 110:     Calculate the number of eligible hospitalization days for the current claim
+ 111:     after applying the annual limit cap.
+ 112: 
+ 113:     Args:
+ 114:         claimed_hospitalization_days: Number of hospitalization days in the current claim.
+ 115:         remaining_payable_days: Days still available under the annual limit.
+ 116: 
+ 117:     Returns:
+ 118:         Eligible days payable for this claim (CALC2).
+ 119:     """
+ 120:     return min(claimed_hospitalization_days, remaining_payable_days)
+ 121: 
+ 122: 
+ 123: def _calculate_benefit_amount(eligible_days: int) -> Decimal:
+ 124:     """
+ 125:     Calculate the total benefit payout for the current claim.
+ 126: 
+ 127:     The daily benefit is fixed at DAILY_BENEFIT_KRW and is not subject to
+ 128:     partial-day proration.
+ 129: 
+ 130:     Args:
+ 131:         eligible_days: Number of eligible hospitalization days for this claim.
+ 132: 
+ 133:     Returns:
+ 134:         Total benefit amount in KRW as a Decimal (CALC3).
+ 135:     """
+ 136:     return (Decimal(eligible_days) * DAILY_BENEFIT_KRW).quantize(
+ 137:         Decimal("1"), rounding=ROUND_HALF_UP
+ 138:     )
+ 139: 
+ 140: 
+ 141: def apply_rule(
+ 142:     days_since_inception: int,
+ 143:     annual_hospitalization_days_used: int,
+ 144:     claimed_hospitalization_days: int,
+ 145: ) -> Tuple[Decimal, int]:
+ 146:     """
+ 147:     Apply the Daily Hospitalization Benefit rule with Waiting Period and Annual Limit.
+ 148: 
+ 149:     A daily hospitalization benefit of 100,000 KRW per day is payable only after
+ 150:     a 90-day waiting period from policy inception, subject to a maximum of 180
+ 151:     payable days per policy year.
+ 152: 
+ 153:     Business Rules:
+ 154:         - Benefit is denied entirely if days_since_inception <= 90 (waiting period
+ 155:           not yet satisfied).
+ 156:         - Benefit is denied entirely if annual_hospitalization_days_used >= 180
+ 157:           (annual limit exhausted).
+ 158:         - When the claim partially exceeds the remaining annual limit, only the
+ 159:           remaining days are paid (e.g., 1 day remaining out of a 5-day claim).
+ 160:         - The daily benefit amount is fixed at 100,000 KRW with no partial-day
+ 161:           proration.
+ 162:         - annual_hospitalization_days_used must be reset to 0 at the start of each
+ 163:           new policy year by the caller; this function does not manage policy year
+ 164:           transitions.
+ 165: 
+ 166:     Args:
+ 167:         days_since_inception: Number of days elapsed since the policy inception date.
+ 168:             Must be a non-negative integer. Day 0 = inception date.
+ 169:         annual_hospitalization_days_used: Total hospitalization days already claimed
+ 170:             and paid in the current policy year. Must be an integer in [0, 180].
+ 171:         claimed_hospitalization_days: Number of hospitalization days in the current
+ 172:             claim request. Must be a positive integer (minimum 1).
+ 173: 
+ 174:     Returns:
+ 175:         A tuple of:
+ 176:             - benefit_amount (Decimal): Total KRW benefit payable for this claim.
+ 177:               Returns Decimal("0") if any eligibility condition is not met.
+ 178:             - updated_annual_hospitalization_days_used (int): The updated cumulative
+ 179:               hospitalization days used after this claim (CALC4). Unchanged if
+ 180:               benefit is denied.
+ 181: 
+ 182:     Raises:
+ 183:         ValueError: If any input parameter fails validation.
+ 184: 
+ 185:     Examples:
+ 186:         >>> apply_rule(91, 0, 1)
+ 187:         (Decimal('100000'), 1)
+ 188: 
+ 189:         >>> apply_rule(90, 0, 5)   # Waiting period not satisfied
+ 190:         (Decimal('0'), 0)
+ 191: 
+ 192:         >>> apply_rule(91, 179, 5)  # Only 1 day remaining in annual limit
+ 193:         (Decimal('100000'), 180)
+ 194: 
+ 195:         >>> apply_rule(91, 180, 5)  # Annual limit exhausted
+ 196:         (Decimal('0'), 180)
+ 197:     """
+ 198:     _validate_inputs(
+ 199:         days_since_inception,
+ 200:         annual_hospitalization_days_used,
+ 201:         claimed_hospitalization_days,
+ 202:     )
+ 203: 
+ 204:     # C1: Check waiting period
+ 205:     if not _is_waiting_period_satisfied(days_since_inception):
+ 206:         return ZERO_BENEFIT, annual_hospitalization_days_used
+ 207: 
+ 208:     # C2: Check annual limit availability
+ 209:     if not _is_annual_limit_available(annual_hospitalization_days_used):
+ 210:         return ZERO_BENEFIT, annual_hospitalization_days_used
+ 211: 
+ 212:     # CALC1: Remaining payable days within annual limit
+ 213:     remaining_payable_days = _calculate_remaining_payable_days(
+ 214:         annual_hospitalization_days_used
+ 215:     )
+ 216: 
+ 217:     # CALC2: Eligible days for this claim (capped by annual limit)
+ 218:     eligible_days = _calculate_eligible_days(
+ 219:         claimed_hospitalization_days, remaining_payable_days
+ 220:     )
+ 221: 
+ 222:     # CALC3: Benefit amount
+ 223:     benefit_amount = _calculate_benefit_amount(eligible_days)
+ 224: 
+ 225:     # CALC4: Updated annual hospitalization days used
+ 226:     updated_annual_days_used = annual_hospitalization_days_used + eligible_days
+ 227: 
+ 228:     return benefit_amount, updated_annual_days_used

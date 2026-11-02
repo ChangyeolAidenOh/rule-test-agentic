@@ -37,8 +37,37 @@ Judges see exactly the code stored in each snapshot (`gold/code/S*.txt`).
   including when a label turns out to be interpretation-dependent (handled by §6 instead).
 - v2 gold labels follow the same rules and are frozen at their own commit, made before
   `run` is executed on `results_snapshot_v2`.
-- Labels are supported by boundary-test evidence (`gold/boundary_test_evidence.csv`).
+- Labels are supported by boundary-test evidence (`gold/boundary_test_evidence.csv`),
+  produced by `gold/check_boundaries.py` (see §4.1).
 - v1 label distribution at freeze: 15 faithful, 2 incorrect, 0 missing; source: 10 rule, 7 derived.
+
+### 4.1 Boundary-test evidence (v1)
+
+`gold/check_boundaries.py` strips the line numbers from `gold/code/S*.txt`, loads each
+snapshot module, probes every condition at its threshold and adjacent values, and writes
+`gold/boundary_test_evidence.csv` (17 conditions, 50 cases). Re-running it from `gold/`
+must reproduce the committed CSV byte for byte.
+
+What the evidence is and is not:
+
+- **A test harness, not a formal verifier.** It checks 50 chosen cases (threshold and
+  neighbours), not all inputs. A match means "no disagreement at the probed points".
+- **Executes snapshot code with `exec()`.** Run it only on these trusted, committed
+  snapshot files.
+- **Snapshot-specific.** It calls the v1 code's internal helpers by name
+  (e.g. `_is_age_surcharge_applicable`), so it does not run on other snapshots.
+  v2 needs its own harness, written by the annotator under the same rules.
+- **Two readings of a condition are used, chosen per row:**
+  - *decision* — the condition's truth value is compared with the code's branch decision
+    or with whether the input is accepted (S1, S2, S3-C1/C2, S4-C1–C4, S5);
+  - *invariant* — the condition is treated as a property that must always hold, with
+    `spec_expected` fixed to True (S3-C3, S4-C5).
+  The protocol did not specify which reading to use. The S4-C5 mismatch arises under the
+  invariant reading; under the decision reading the code's `max(value, 0)` is consistent
+  with the condition. This is recorded as a limit on the evidence (§8), not a reason to
+  change the frozen label.
+- **Mixed probe paths within a condition:** S2-C2 uses the helper
+  `_is_annual_limit_available` for 179/180 and the `apply_rule` validation path for 181.
 
 ## 5. Judges
 
@@ -100,6 +129,8 @@ false alarms; coverage and accuracy-on-decided (AST); self-consistency across k 
     Labeled `incorrect` per the protocol. This likely reflects a mismatch between the spec's
     formal encoding and its intent rather than a code defect; it documents a limit on how the
     label can be interpreted and is **not** grounds to change the label.
+- **Boundary evidence is case-based** (50 probed cases, §4.1) and mixes decision and
+  invariant readings across rows; the protocol did not fix which reading applies.
 - **Spec-validity cases are incidental**: the issues above were noticed during fidelity
   labeling, not found by a systematic spec review. They are reported as the number of cases
   identified (2 of 17 v1 rows), not as an error rate or detection rate.
@@ -110,3 +141,13 @@ false alarms; coverage and accuracy-on-decided (AST); self-consistency across k 
   (consistent with its description? with the raw rule?).
 - Improving Node 1 so that actions (e.g. "floor at zero") are not encoded as conditions on
   intermediate variables.
+
+## 10. Amendments
+
+The original plan was committed in `eb978b1` together with the frozen v1 gold labels.
+Amendments are recorded here; none changes the analyses (§6) or the interpretation
+rules (§7), and each was committed before the corresponding judge output existed.
+
+| # | Change | Before any judge output? |
+|---|---|---|
+| 1 | Added §4.1 (boundary-test evidence: case-based harness, `exec()` caveat, snapshot-specific helpers, decision vs invariant readings, mixed probe paths in S2-C2), the reference to `gold/check_boundaries.py` in §4, and one limitation in §8. Committed `gold/check_boundaries.py`, which produced the already-committed `boundary_test_evidence.csv`. | Yes — no `judge_runs.json` existed |

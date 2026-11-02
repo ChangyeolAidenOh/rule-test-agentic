@@ -1,0 +1,494 @@
+   1: from decimal import Decimal, ROUND_HALF_UP
+   2: from datetime import date, timedelta
+   3: from typing import List, NamedTuple
+   4: 
+   5: # Constants
+   6: READMISSION_WINDOW_DAYS = 180
+   7: ZERO = Decimal("0")
+   8: ONE = Decimal("1")
+   9: 
+  10: # Monetary rounding quantizer
+  11: KRW_QUANTIZER = Decimal("1")  # KRW has no decimal places
+  12: 
+  13: 
+  14: class HospitalizationEpisode(NamedTuple):
+  15:     """Represents a single hospitalization episode."""
+  16:     disease_code: str
+  17:     admission_date: date
+  18:     discharge_date: date
+  19:     benefit_amount: Decimal
+  20: 
+  21: 
+  22: class ReadmissionResult(NamedTuple):
+  23:     """Result of applying the re-admission rule."""
+  24:     is_single_hospitalization: bool
+  25:     combined_hospitalization_benefit: Decimal
+  26:     cumulative_annual_benefit: Decimal
+  27:     payable_benefit: Decimal
+  28:     days_between_discharge_and_readmission: int
+  29: 
+  30: 
+  31: def _validate_disease_code(disease_code: str, label: str) -> None:
+  32:     """
+  33:     Validate that a disease code is a non-empty string.
+  34: 
+  35:     Args:
+  36:         disease_code: The disease classification code (e.g., KCD/ICD).
+  37:         label: A label for error messages identifying which code is invalid.
+  38: 
+  39:     Raises:
+  40:         ValueError: If the disease code is empty or not a string.
+  41:     """
+  42:     if not isinstance(disease_code, str) or not disease_code.strip():
+  43:         raise ValueError(
+  44:             f"{label} must be a non-empty string representing a standardized "
+  45:             f"disease classification code (e.g., KCD/ICD). Got: {disease_code!r}"
+  46:         )
+  47: 
+  48: 
+  49: def _validate_date(d: date, label: str) -> None:
+  50:     """
+  51:     Validate that a value is a date instance.
+  52: 
+  53:     Args:
+  54:         d: The value to validate.
+  55:         label: A label for error messages.
+  56: 
+  57:     Raises:
+  58:         ValueError: If the value is not a date instance.
+  59:     """
+  60:     if not isinstance(d, date):
+  61:         raise ValueError(
+  62:             f"{label} must be a datetime.date instance. Got: {type(d).__name__!r}"
+  63:         )
+  64: 
+  65: 
+  66: def _validate_decimal_non_negative(value: Decimal, label: str) -> None:
+  67:     """
+  68:     Validate that a Decimal value is non-negative.
+  69: 
+  70:     Args:
+  71:         value: The Decimal value to validate.
+  72:         label: A label for error messages.
+  73: 
+  74:     Raises:
+  75:         ValueError: If the value is negative or not a Decimal.
+  76:     """
+  77:     if not isinstance(value, Decimal):
+  78:         raise ValueError(
+  79:             f"{label} must be a Decimal instance. Got: {type(value).__name__!r}"
+  80:         )
+  81:     if value < ZERO:
+  82:         raise ValueError(
+  83:             f"{label} must be non-negative. Got: {value}"
+  84:         )
+  85: 
+  86: 
+  87: def _validate_episode(episode: HospitalizationEpisode, label: str) -> None:
+  88:     """
+  89:     Validate a HospitalizationEpisode for internal consistency.
+  90: 
+  91:     Args:
+  92:         episode: The hospitalization episode to validate.
+  93:         label: A label for error messages.
+  94: 
+  95:     Raises:
+  96:         ValueError: If the episode has invalid fields.
+  97:     """
+  98:     _validate_disease_code(episode.disease_code, f"{label}.disease_code")
+  99:     _validate_date(episode.admission_date, f"{label}.admission_date")
+ 100:     _validate_date(episode.discharge_date, f"{label}.discharge_date")
+ 101:     if episode.discharge_date < episode.admission_date:
+ 102:         raise ValueError(
+ 103:             f"{label}: discharge_date ({episode.discharge_date}) must not be "
+ 104:             f"before admission_date ({episode.admission_date})."
+ 105:         )
+ 106:     _validate_decimal_non_negative(episode.benefit_amount, f"{label}.benefit_amount")
+ 107: 
+ 108: 
+ 109: def _round_krw(amount: Decimal) -> Decimal:
+ 110:     """
+ 111:     Round a Decimal amount to the nearest KRW (no decimal places).
+ 112: 
+ 113:     Args:
+ 114:         amount: The monetary amount to round.
+ 115: 
+ 116:     Returns:
+ 117:         The rounded Decimal amount.
+ 118:     """
+ 119:     return amount.quantize(KRW_QUANTIZER, rounding=ROUND_HALF_UP)
+ 120: 
+ 121: 
+ 122: def _calculate_days_between(discharge_date: date, admission_date: date) -> int:
+ 123:     """
+ 124:     Calculate the number of days between a prior discharge date and a new admission date.
+ 125: 
+ 126:     The interval is measured from the discharge date of the prior hospitalization
+ 127:     to the admission date of the re-admission (inclusive of day 180).
+ 128:     Day 0 means same-day discharge and re-admission.
+ 129: 
+ 130:     Args:
+ 131:         discharge_date: The discharge date of the prior hospitalization.
+ 132:         admission_date: The admission date of the re-admission.
+ 133: 
+ 134:     Returns:
+ 135:         The number of days between discharge and re-admission (>= 0).
+ 136: 
+ 137:     Raises:
+ 138:         ValueError: If the re-admission date is before the prior discharge date.
+ 139:     """
+ 140:     delta = (admission_date - discharge_date).days
+ 141:     if delta < 0:
+ 142:         raise ValueError(
+ 143:             f"Re-admission date ({admission_date}) cannot be before the prior "
+ 144:             f"discharge date ({discharge_date}). Days difference: {delta}"
+ 145:         )
+ 146:     return delta
+ 147: 
+ 148: 
+ 149: def _is_same_disease(prior_disease_code: str, readmission_disease_code: str) -> bool:
+ 150:     """
+ 151:     Determine whether two hospitalizations are for the same disease.
+ 152: 
+ 153:     Disease identity is verified using exact match of standardized disease
+ 154:     classification codes (e.g., KCD/ICD). Partial or related diagnoses do
+ 155:     not automatically qualify as the same disease.
+ 156: 
+ 157:     Args:
+ 158:         prior_disease_code: The disease code of the prior hospitalization.
+ 159:         readmission_disease_code: The disease code of the re-admission.
+ 160: 
+ 161:     Returns:
+ 162:         True if the disease codes match exactly, False otherwise.
+ 163:     """
+ 164:     return prior_disease_code.strip().upper() == readmission_disease_code.strip().upper()
+ 165: 
+ 166: 
+ 167: def _determine_single_hospitalization(
+ 168:     disease_code_match: bool,
+ 169:     days_between_discharge_and_readmission: int,
+ 170: ) -> bool:
+ 171:     """
+ 172:     Determine whether the re-admission qualifies as a continuation of the prior
+ 173:     hospitalization (single hospitalization treatment).
+ 174: 
+ 175:     Conditions:
+ 176:       - The re-admission is for the same disease (disease_code_match == True).
+ 177:       - The number of days between prior discharge and new admission is <= 180.
+ 178: 
+ 179:     Args:
+ 180:         disease_code_match: True if both hospitalizations share the same disease code.
+ 181:         days_between_discharge_and_readmission: Days elapsed from prior discharge to
+ 182:             new admission (0 = same day).
+ 183: 
+ 184:     Returns:
+ 185:         True if the re-admission should be treated as a single hospitalization.
+ 186:     """
+ 187:     return disease_code_match and (days_between_discharge_and_readmission <= READMISSION_WINDOW_DAYS)
+ 188: 
+ 189: 
+ 190: def _calculate_combined_benefit(
+ 191:     prior_hospitalization_benefit: Decimal,
+ 192:     readmission_hospitalization_benefit: Decimal,
+ 193: ) -> Decimal:
+ 194:     """
+ 195:     Calculate the combined total hospitalization benefit amount by summing the
+ 196:     benefit from the prior hospitalization and the re-admission hospitalization.
+ 197: 
+ 198:     Args:
+ 199:         prior_hospitalization_benefit: Benefit amount from the prior hospitalization.
+ 200:         readmission_hospitalization_benefit: Benefit amount from the re-admission.
+ 201: 
+ 202:     Returns:
+ 203:         The combined hospitalization benefit as a rounded KRW Decimal.
+ 204:     """
+ 205:     combined = prior_hospitalization_benefit + readmission_hospitalization_benefit
+ 206:     return _round_krw(combined)
+ 207: 
+ 208: 
+ 209: def _calculate_cumulative_annual_benefit(
+ 210:     previous_cumulative_annual_benefit: Decimal,
+ 211:     combined_hospitalization_benefit: Decimal,
+ 212:     annual_benefit_limit: Decimal,
+ 213: ) -> Decimal:
+ 214:     """
+ 215:     Accumulate the combined hospitalization benefit into the annual benefit total,
+ 216:     capped at the annual benefit limit.
+ 217: 
+ 218:     Formula: MIN(previous_cumulative_annual_benefit + combined_hospitalization_benefit,
+ 219:                  annual_benefit_limit)
+ 220: 
+ 221:     Args:
+ 222:         previous_cumulative_annual_benefit: The cumulative benefit already paid
+ 223:             in the current annual benefit period before this event.
+ 224:         combined_hospitalization_benefit: The combined benefit for the merged
+ 225:             hospitalization event.
+ 226:         annual_benefit_limit: The maximum total benefit payable in the annual period.
+ 227: 
+ 228:     Returns:
+ 229:         The updated cumulative annual benefit, capped at the annual limit.
+ 230:     """
+ 231:     accumulated = previous_cumulative_annual_benefit + combined_hospitalization_benefit
+ 232:     capped = min(accumulated, annual_benefit_limit)
+ 233:     return _round_krw(capped)
+ 234: 
+ 235: 
+ 236: def _calculate_payable_benefit(
+ 237:     combined_hospitalization_benefit: Decimal,
+ 238:     previous_cumulative_annual_benefit: Decimal,
+ 239:     annual_benefit_limit: Decimal,
+ 240: ) -> Decimal:
+ 241:     """
+ 242:     Calculate the payable benefit for the merged hospitalization event after
+ 243:     applying the annual limit.
+ 244: 
+ 245:     Formula: MIN(combined_hospitalization_benefit,
+ 246:                  annual_benefit_limit - previous_cumulative_annual_benefit)
+ 247: 
+ 248:     If the prior cumulative benefit has already reached the annual limit,
+ 249:     the payable benefit is zero.
+ 250: 
+ 251:     Args:
+ 252:         combined_hospitalization_benefit: The combined benefit for the merged
+ 253:             hospitalization event.
+ 254:         previous_cumulative_annual_benefit: The cumulative benefit already paid
+ 255:             in the current annual benefit period before this event.
+ 256:         annual_benefit_limit: The maximum total benefit payable in the annual period.
+ 257: 
+ 258:     Returns:
+ 259:         The payable benefit for this event, which may be zero if the annual
+ 260:         limit has already been exhausted.
+ 261:     """
+ 262:     remaining_limit = annual_benefit_limit - previous_cumulative_annual_benefit
+ 263:     # Remaining limit cannot be negative (guard against over-accumulated state)
+ 264:     remaining_limit = max(remaining_limit, ZERO)
+ 265:     payable = min(combined_hospitalization_benefit, remaining_limit)
+ 266:     return _round_krw(payable)
+ 267: 
+ 268: 
+ 269: def apply_rule(
+ 270:     prior_episode: HospitalizationEpisode,
+ 271:     readmission_episode: HospitalizationEpisode,
+ 272:     previous_cumulative_annual_benefit: Decimal,
+ 273:     annual_benefit_limit: Decimal,
+ 274: ) -> ReadmissionResult:
+ 275:     """
+ 276:     Apply Rule S3: Same Disease Re-admission Within 180 Days Treated as Single
+ 277:     Hospitalization.
+ 278: 
+ 279:     If a patient is re-admitted for the same disease within 180 days of a prior
+ 280:     discharge, the two hospitalizations are treated as one continuous hospitalization
+ 281:     and their costs are combined toward the annual benefit limit.
+ 282: 
+ 283:     The 180-day interval is measured from the discharge date of the prior
+ 284:     hospitalization to the admission date of the re-admission (inclusive of day 180).
+ 285:     Re-admission on the same day as discharge (day 0) is treated as a continuation.
+ 286: 
+ 287:     Disease identity is verified using exact match of standardized disease
+ 288:     classification codes (e.g., KCD/ICD codes). Partial or related diagnoses do
+ 289:     not automatically qualify as the same disease.
+ 290: 
+ 291:     The cumulative annual benefit never exceeds the annual benefit limit; any
+ 292:     excess is forfeited and not carried over.
+ 293: 
+ 294:     Args:
+ 295:         prior_episode: The prior hospitalization episode, containing:
+ 296:             - disease_code (str): Standardized disease classification code.
+ 297:             - admission_date (date): Date of admission.
+ 298:             - discharge_date (date): Date of discharge.
+ 299:             - benefit_amount (Decimal): Benefit amount in KRW.
+ 300:         readmission_episode: The re-admission hospitalization episode, containing
+ 301:             the same fields as prior_episode.
+ 302:         previous_cumulative_annual_benefit: The total benefit already accumulated
+ 303:             in the current annual benefit period before this event (KRW, Decimal).
+ 304:         annual_benefit_limit: The maximum total benefit payable in the annual
+ 305:             benefit period (KRW, Decimal).
+ 306: 
+ 307:     Returns:
+ 308:         A ReadmissionResult named tuple containing:
+ 309:             - is_single_hospitalization (bool): Whether the re-admission is treated
+ 310:               as a continuation of the prior hospitalization.
+ 311:             - combined_hospitalization_benefit (Decimal): Sum of both benefit amounts
+ 312:               if merged; equals readmission benefit only if treated separately.
+ 313:             - cumulative_annual_benefit (Decimal): Updated cumulative annual benefit
+ 314:               after this event, capped at the annual limit.
+ 315:             - payable_benefit (Decimal): The benefit payable for this event after
+ 316:               applying the annual limit.
+ 317:             - days_between_discharge_and_readmission (int): Days elapsed from prior
+ 318:               discharge to re-admission.
+ 319: 
+ 320:     Raises:
+ 321:         ValueError: If any input is invalid (e.g., negative amounts, discharge
+ 322:             before admission, re-admission before prior discharge, annual limit
+ 323:             exceeded by prior cumulative benefit, etc.).
+ 324: 
+ 325:     Examples:
+ 326:         >>> from decimal import Decimal
+ 327:         >>> from datetime import date
+ 328:         >>> prior = HospitalizationEpisode(
+ 329:         ...     disease_code="J18.9",
+ 330:         ...     admission_date=date(2024, 1, 1),
+ 331:         ...     discharge_date=date(2024, 1, 10),
+ 332:         ...     benefit_amount=Decimal("300000"),
+ 333:         ... )
+ 334:         >>> readmission = HospitalizationEpisode(
+ 335:         ...     disease_code="J18.9",
+ 336:         ...     admission_date=date(2024, 3, 8),  # 58 days after discharge
+ 337:         ...     discharge_date=date(2024, 3, 15),
+ 338:         ...     benefit_amount=Decimal("200000"),
+ 339:         ... )
+ 340:         >>> result = apply_rule(
+ 341:         ...     prior_episode=prior,
+ 342:         ...     readmission_episode=readmission,
+ 343:         ...     previous_cumulative_annual_benefit=Decimal("0"),
+ 344:         ...     annual_benefit_limit=Decimal("1000000"),
+ 345:         ... )
+ 346:         >>> result.is_single_hospitalization
+ 347:         True
+ 348:         >>> result.combined_hospitalization_benefit
+ 349:         Decimal('500000')
+ 350:         >>> result.payable_benefit
+ 351:         Decimal('500000')
+ 352:     """
+ 353:     # --- Input validation ---
+ 354:     _validate_episode(prior_episode, "prior_episode")
+ 355:     _validate_episode(readmission_episode, "readmission_episode")
+ 356:     _validate_decimal_non_negative(
+ 357:         previous_cumulative_annual_benefit, "previous_cumulative_annual_benefit"
+ 358:     )
+ 359:     _validate_decimal_non_negative(annual_benefit_limit, "annual_benefit_limit")
+ 360: 
+ 361:     if annual_benefit_limit == ZERO:
+ 362:         raise ValueError(
+ 363:             "annual_benefit_limit must be greater than zero. Got: 0"
+ 364:         )
+ 365: 
+ 366:     if previous_cumulative_annual_benefit > annual_benefit_limit:
+ 367:         raise ValueError(
+ 368:             f"previous_cumulative_annual_benefit ({previous_cumulative_annual_benefit}) "
+ 369:             f"cannot exceed annual_benefit_limit ({annual_benefit_limit}). "
+ 370:             f"The cumulative benefit must never exceed the annual limit."
+ 371:         )
+ 372: 
+ 373:     # --- CALC1: Determine single hospitalization ---
+ 374:     days_between = _calculate_days_between(
+ 375:         prior_episode.discharge_date,
+ 376:         readmission_episode.admission_date,
+ 377:     )
+ 378:     disease_code_match = _is_same_disease(
+ 379:         prior_episode.disease_code,
+ 380:         readmission_episode.disease_code,
+ 381:     )
+ 382:     is_single_hospitalization = _determine_single_hospitalization(
+ 383:         disease_code_match=disease_code_match,
+ 384:         days_between_discharge_and_readmission=days_between,
+ 385:     )
+ 386: 
+ 387:     # --- CALC2: Combined hospitalization benefit ---
+ 388:     if is_single_hospitalization:
+ 389:         combined_hospitalization_benefit = _calculate_combined_benefit(
+ 390:             prior_hospitalization_benefit=prior_episode.benefit_amount,
+ 391:             readmission_hospitalization_benefit=readmission_episode.benefit_amount,
+ 392:         )
+ 393:     else:
+ 394:         # Treated as a separate hospitalization; only the re-admission benefit applies
+ 395:         combined_hospitalization_benefit = _round_krw(readmission_episode.benefit_amount)
+ 396: 
+ 397:     # --- CALC3: Cumulative annual benefit (capped at limit) ---
+ 398:     cumulative_annual_benefit = _calculate_cumulative_annual_benefit(
+ 399:         previous_cumulative_annual_benefit=previous_cumulative_annual_benefit,
+ 400:         combined_hospitalization_benefit=combined_hospitalization_benefit,
+ 401:         annual_benefit_limit=annual_benefit_limit,
+ 402:     )
+ 403: 
+ 404:     # --- CALC4: Payable benefit for this event ---
+ 405:     payable_benefit = _calculate_payable_benefit(
+ 406:         combined_hospitalization_benefit=combined_hospitalization_benefit,
+ 407:         previous_cumulative_annual_benefit=previous_cumulative_annual_benefit,
+ 408:         annual_benefit_limit=annual_benefit_limit,
+ 409:     )
+ 410: 
+ 411:     return ReadmissionResult(
+ 412:         is_single_hospitalization=is_single_hospitalization,
+ 413:         combined_hospitalization_benefit=combined_hospitalization_benefit,
+ 414:         cumulative_annual_benefit=cumulative_annual_benefit,
+ 415:         payable_benefit=payable_benefit,
+ 416:         days_between_discharge_and_readmission=days_between,
+ 417:     )
+ 418: 
+ 419: 
+ 420: def apply_rule_chain(
+ 421:     episodes: List[HospitalizationEpisode],
+ 422:     initial_cumulative_annual_benefit: Decimal,
+ 423:     annual_benefit_limit: Decimal,
+ 424: ) -> List[ReadmissionResult]:
+ 425:     """
+ 426:     Apply Rule S3 across a chain of hospitalization episodes.
+ 427: 
+ 428:     If multiple re-admissions occur for the same disease, each within 180 days
+ 429:     of the previous discharge, all episodes in the chain are merged into a single
+ 430:     hospitalization for benefit purposes. This function processes each consecutive
+ 431:     pair of episodes and accumulates the annual benefit across the chain.
+ 432: 
+ 433:     The chain merging logic works as follows:
+ 434:       - Each episode is compared to the immediately preceding episode.
+ 435:       - If the re-admission qualifies as a single hospitalization (same disease,
+ 436:         within 180 days), the combined benefit is accumulated.
+ 437:       - The cumulative annual benefit is updated after each episode pair.
+ 438: 
+ 439:     Args:
+ 440:         episodes: An ordered list of HospitalizationEpisode instances representing
+ 441:             the sequence of hospitalizations (at least 2 episodes required).
+ 442:         initial_cumulative_annual_benefit: The cumulative benefit already accumulated
+ 443:             before the first episode in the chain (KRW, Decimal).
+ 444:         annual_benefit_limit: The maximum total benefit payable in the annual
+ 445:             benefit period (KRW, Decimal).
+ 446: 
+ 447:     Returns:
+ 448:         A list of ReadmissionResult instances, one for each consecutive episode
+ 449:         pair (length = len(episodes) - 1).
+ 450: 
+ 451:     Raises:
+ 452:         ValueError: If fewer than 2 episodes are provided, or if any episode or
+ 453:             monetary value is invalid.
+ 454: 
+ 455:     Examples:
+ 456:         >>> episodes = [ep1, ep2, ep3, ep4]  # 4 episodes -> 3 results
+ 457:         >>> results = apply_rule_chain(episodes, Decimal("0"), Decimal("1000000"))
+ 458:         >>> len(results)
+ 459:         3
+ 460:     """
+ 461:     if not isinstance(episodes, list):
+ 462:         raise ValueError(
+ 463:             f"episodes must be a list of HospitalizationEpisode instances. "
+ 464:             f"Got: {type(episodes).__name__!r}"
+ 465:         )
+ 466:     if len(episodes) < 2:
+ 467:         raise ValueError(
+ 468:             f"At least 2 hospitalization episodes are required to evaluate "
+ 469:             f"re-admission. Got: {len(episodes)} episode(s)."
+ 470:         )
+ 471: 
+ 472:     _validate_decimal_non_negative(
+ 473:         initial_cumulative_annual_benefit, "initial_cumulative_annual_benefit"
+ 474:     )
+ 475:     _validate_decimal_non_negative(annual_benefit_limit, "annual_benefit_limit")
+ 476: 
+ 477:     results: List[ReadmissionResult] = []
+ 478:     cumulative = initial_cumulative_annual_benefit
+ 479: 
+ 480:     for i in range(1, len(episodes)):
+ 481:         prior = episodes[i - 1]
+ 482:         readmission = episodes[i]
+ 483: 
+ 484:         result = apply_rule(
+ 485:             prior_episode=prior,
+ 486:             readmission_episode=readmission,
+ 487:             previous_cumulative_annual_benefit=cumulative,
+ 488:             annual_benefit_limit=annual_benefit_limit,
+ 489:         )
+ 490:         results.append(result)
+ 491:         # Update cumulative for the next iteration
+ 492:         cumulative = result.cumulative_annual_benefit
+ 493: 
+ 494:     return results
