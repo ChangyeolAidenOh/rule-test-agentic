@@ -228,3 +228,18 @@ def test_hybrid_invalid_llm_verdict_becomes_undetermined(monkeypatch):
     assert r["verdict"] == "undetermined"
     assert r["correct"] is False
     assert out["fidelity_score"] == 0.0
+
+
+def test_evidence_marks_equivalent_boundary():
+    """Code `days_used > 180` vs spec `le 180`: same boundary, shown as equivalent."""
+    code = "LIMIT = 180\ndef f(annual_hospitalization_days_used):\n    if annual_hospitalization_days_used > LIMIT:\n        raise ValueError\n"
+    r = verdict(code, cond("C2", "annual_hospitalization_days_used", "le", 180, "days"))
+    assert r["verdict"] == "faithful"
+    assert r["evidence"].startswith("spec: annual_hospitalization_days_used le 180")
+    assert "(equivalent boundary)" in r["evidence"]
+
+
+def test_evidence_same_form_has_no_equivalence_note():
+    code = "def f(age):\n    return age >= 65\n"
+    r = verdict(code, cond("C1", "age", "ge", 65, "years"))
+    assert "(equivalent boundary)" not in r["evidence"]

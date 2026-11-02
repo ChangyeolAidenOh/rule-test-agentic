@@ -138,7 +138,9 @@ def render():
         st.dataframe(fid_df, use_container_width=True, hide_index=True)
         st.caption(
             "Source: 'rule' = stated in the original rule text, "
-            "'derived' = validation constraint added during spec interpretation."
+            "'derived' = validation constraint added during spec interpretation. "
+            "'Equivalent boundary' = the code states the complementary comparison "
+            "(e.g. `if x > 180: raise` for spec `x <= 180`), which places the threshold identically."
         )
     else:
         st.info("No fidelity data. Run the pipeline first.")

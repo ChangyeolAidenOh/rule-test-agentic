@@ -272,15 +272,22 @@ def check_condition(condition: dict, comparisons: list[Comparison]) -> dict:
 
     matches = [c for c in candidates if boundary(c.op, c.value, integer) in targets]
     mismatches = [c for c in candidates if c not in matches]
+    spec_form = f"{param} {op} {condition.get('value')}"
+
+    def _fmt_match(c: Comparison) -> str:
+        same_form = c.op == op and c.value in spec_values
+        note = "" if same_form else " (equivalent boundary)"
+        return _fmt(c) + note
 
     if matches and not mismatches:
         verdict = VERDICT_FAITHFUL
-        evidence = "boundary matches spec — " + "; ".join(_fmt(c) for c in matches)
+        evidence = f"spec: {spec_form} — code: " + "; ".join(_fmt_match(c) for c in matches)
     elif mismatches and not matches:
         verdict = VERDICT_INCORRECT
         evidence = (
-            f"spec requires {param} {op} {condition.get('value')}, code has "
+            f"spec: {spec_form} — code: "
             + "; ".join(_fmt(c) for c in mismatches)
+            + " (threshold falls on the other side of the boundary)"
         )
     else:
         return undetermined(
