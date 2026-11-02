@@ -94,7 +94,11 @@ def doc_generator(state: PipelineState) -> dict:
         temperature=0.3,
     )
 
+    # Node 5 already overwrote `status`, so derive the final state from the test outcome.
+    # Keeps the "manual development required" signal visible to the reviewer.
+    final_status = "completed" if state.get("all_tests_passed") else "manual_required"
+
     return {
         "documentation": response.strip(),
-        "status": "completed",
+        "status": final_status,
     }

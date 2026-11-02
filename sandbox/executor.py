@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import tempfile
+import sys
 
 from config.settings import SANDBOX_TIMEOUT_SECONDS
 from sandbox.import_checker import check_imports
@@ -54,7 +55,7 @@ def run_tests(generated_code: str, test_code: str) -> dict:
 
         # Run pytest with JSON report
         cmd = [
-            "python", "-m", "pytest",
+            sys.executable, "-m", "pytest",
             test_path,
             "-v",
             "--tb=short",
