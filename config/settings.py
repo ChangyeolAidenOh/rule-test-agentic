@@ -20,6 +20,10 @@ NODE_MODELS = {
     "test_generator": MODEL_SONNET,
     "compliance_checker": MODEL_HAIKU,
     "doc_generator": MODEL_HAIKU,
+    # LLM fallback for Business Rule Fidelity (conditions the AST checker cannot decide).
+    # Haiku produced a self-contradictory verdict in v1 (S2 C2), so the judge runs on Sonnet.
+    # evaluation/judge_reliability.py compares both models against a gold set.
+    "fidelity_judge": MODEL_SONNET,
 }
 
 # Sandbox settings
@@ -35,3 +39,4 @@ ALLOWED_IMPORTS = {
 TEMPERATURE_CODE = 0.0
 TEMPERATURE_REASONING = 0.2
 TEMPERATURE_DOCS = 0.3
+TEMPERATURE_JUDGE = 0.0

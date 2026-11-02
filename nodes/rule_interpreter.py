@@ -21,7 +21,8 @@ Output ONLY valid JSON with the following schema (no markdown, no explanation):
             "parameter": "<variable name>",
             "operator": "<ge|gt|le|lt|eq|ne|in|between>",
             "value": "<threshold or list>",
-            "unit": "<years|days|KRW|percent|etc>"
+            "unit": "<years|days|KRW|percent|etc>",
+            "source": "<rule|derived>"
         }
     ],
     "calculations": [
@@ -53,6 +54,12 @@ Guidelines:
 - The formula field should be human-readable, not code.
 - Keep parameter names in snake_case English.
 - Conditions should be atomic (one check per condition).
+- Use a numeric "value" whenever the threshold is a number (e.g. "65", "180", "0").
+- Tag every condition with "source":
+  - "rule": the condition is stated in, or directly implied by, the original rule text
+    (e.g. "65세 이상" -> age ge 65).
+  - "derived": you added it as an input-validation or sanity constraint that the
+    original rule text does not state (e.g. premium gt 0, days ge 0).
 """
 
 

@@ -1,7 +1,31 @@
-"""Tab 4: Compliance Flags - security and regulatory risk flags."""
+"""Tab 4: Compliance Flags - security and regulatory risk flags + Business Rule Fidelity."""
 
 import streamlit as st
 import pandas as pd
+
+
+VERDICT_DISPLAY = {
+    "faithful": "✅ Faithful",
+    "incorrect": "⚠️ Implemented but incorrect",
+    "missing": "❌ Missing",
+    "undetermined": "❔ Undetermined",
+}
+METHOD_DISPLAY = {
+    "ast": "AST (deterministic)",
+    "llm": "LLM judge",
+    "none": "—",
+}
+
+
+def _verdict(r: dict) -> str:
+    """v2 results carry `verdict`; fall back to v1 implemented/correct flags."""
+    if "verdict" in r:
+        return r["verdict"]
+    if r.get("implemented") and r.get("correct"):
+        return "faithful"
+    if r.get("implemented"):
+        return "incorrect"
+    return "missing"
 
 
 def render():
@@ -33,10 +57,7 @@ def render():
             line_num = flag.get("line_number", "?")
             suggestion = flag.get("suggestion", "")
 
-            if severity == "critical":
-                icon = "🔴"
-            else:
-                icon = "🟡"
+            icon = "🔴" if severity == "critical" else "🟡"
 
             with st.container(border=True):
                 st.markdown(
@@ -71,7 +92,7 @@ def render():
         ("Float Arithmetic", "Detects float literals in monetary calculations"),
         ("Magic Numbers", "Flags hardcoded numeric values inside function bodies"),
         ("Exception Handling", "Checks for missing input validation in apply_rule()"),
-        ("Business Rule Fidelity", "LLM-based condition-by-condition verification against rule spec"),
+        ("Business Rule Fidelity", "AST boundary check for numeric thresholds, LLM judge for the rest"),
     ]
     for name, desc in checks:
         st.markdown(f"- **{name}:** {desc}")
@@ -81,36 +102,43 @@ def render():
     st.subheader("Business Rule Fidelity")
     st.markdown(
         '*"Tests passing" ≠ "Logic is correct"* — '
-        "Fidelity checks each condition from the rule spec against the generated code."
+        "each condition of the rule spec is checked against the generated code. "
+        "Numeric thresholds are verified deterministically from the AST "
+        "(boundary placement); remaining conditions go to an LLM judge."
     )
 
     fidelity_results = result.get("fidelity_results", [])
     fidelity_score = result.get("fidelity_score", 0.0)
 
     if fidelity_results:
-        st.metric("Fidelity Score", f"{fidelity_score:.0%}")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Fidelity (all conditions)", f"{fidelity_score:.0%}")
+        rule_score = metrics.get("fidelity_rule_score")
+        m2.metric(
+            "Fidelity (rule-origin only)",
+            f"{rule_score:.0%}" if rule_score is not None else "n/a",
+        )
+        method_counts = metrics.get("fidelity_method_counts", {})
+        m3.metric(
+            "Decided by AST",
+            f"{method_counts.get('ast', 0)}/{len(fidelity_results)}",
+        )
 
         rows = []
         for r in fidelity_results:
-            implemented = r.get("implemented", False)
-            correct = r.get("correct", False)
-            if implemented and correct:
-                status = "Faithful"
-                icon = "✅"
-            elif implemented and not correct:
-                status = "Implemented but incorrect"
-                icon = "⚠️"
-            else:
-                status = "Missing"
-                icon = "❌"
-
             rows.append({
                 "Condition": r.get("condition_id", "?"),
-                "Status": f"{icon} {status}",
+                "Source": r.get("source", "unknown"),
+                "Status": VERDICT_DISPLAY.get(_verdict(r), _verdict(r)),
+                "Method": METHOD_DISPLAY.get(r.get("method"), r.get("method", "LLM (v1)")),
                 "Evidence": r.get("evidence", ""),
             })
 
         fid_df = pd.DataFrame(rows)
         st.dataframe(fid_df, use_container_width=True, hide_index=True)
+        st.caption(
+            "Source: 'rule' = stated in the original rule text, "
+            "'derived' = validation constraint added during spec interpretation."
+        )
     else:
         st.info("No fidelity data. Run the pipeline first.")
