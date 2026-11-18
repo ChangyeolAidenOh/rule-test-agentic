@@ -275,5 +275,5 @@ streamlit run dashboard/app.py
 
 - **Edge case auto-discovery:** Agent identifies boundary values (65 years, 5 years, 90 days, 180 days) from natural language and generates targeted boundary tests
 - **Complex rule decomposition:** For scenarios like S3 and S5 with nested conditions, the Code Generator produces helper functions with separation of concerns
-- **Business Rule Fidelity:** Separates "code that runs" from "code that is correct" — the key insight that tests alone are insufficient when both code and tests are LLM-generated
+- **Business Rule Fidelity:** Separates "code that runs" from "code that is correct", because tests alone are insufficient when both code and tests are LLM-generated
 - **Token budget management:** Complex scenarios generate 600+ line test suites; constrained test generation (8-15 tests) prevents output truncation while maintaining coverage quality
